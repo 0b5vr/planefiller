@@ -1,0 +1,87 @@
+{
+	"app":	{
+		"graphicsShaderFileName":	".\\planefiller.gfx.glsl",
+		"soundShaderFileName":	".\\planefiller.snd.glsl",
+		"xReso":	1280,
+		"yReso":	720
+	},
+	"camera":	{
+		"vec3Pos":	[0, 0, 0],
+		"vec3Ang":	[0, 0, 0],
+		"fovYInRadians":	0.39269909262657166
+	},
+	"captureScreenShotSettings":	{
+		"fileName":	".\\planefiller.png",
+		"xReso":	1280,
+		"yReso":	720,
+		"replaceAlphaByOne":	true
+	},
+	"captureCubemapSettings":	{
+		"fileName":	"",
+		"reso":	512
+	},
+	"renderSettings":	{
+		"pixelFormat":	1,
+		"enableMultipleRenderTargets":	true,
+		"numEnabledRenderTargets":	4,
+		"enableBackBuffer":	true,
+		"enableMipmapGeneration":	true,
+		"textureFilter":	1,
+		"textureWrap":	1,
+		"enableSwapIntervalControl":	true,
+		"swapInterval":	2
+	},
+	"preferenceSettings":	{
+		"enableAutoRestartByGraphicsShader":	true,
+		"enableAutoRestartBySoundShader":	true
+	},
+	"executableExportSettings":	{
+		"fileName":	".\\planefiller-720p.exe",
+		"xReso":	1280,
+		"yReso":	720,
+		"durationInSeconds":	144,
+		"numSoundBufferSamples":	6914048,
+		"numSoundBufferAvailableSamples":	6914048,
+		"numSoundBufferSamplesPerDispatch":	32768,
+		"enableFrameCountUniform":	true,
+		"enableSoundDispatchWait":	true,
+		"shaderMinifierOptions":	{
+			"noRenaming":	false,
+			"enableNoRenamingList":	true,
+			"noRenamingList":	"main,i",
+			"noSequence":	false,
+			"smoothstep":	false
+		},
+		"crinklerOptions":	{
+			"compMode":	2,
+			"useTinyHeader":	false,
+			"useTinyImport":	false
+		}
+	},
+	"recordImageSequenceSettings":	{
+		"directoryName":	"",
+		"xReso":	1280,
+		"yReso":	720,
+		"startTimeInSeconds":	0,
+		"durationInSeconds":	144,
+		"framesPerSecond":	60,
+		"replaceAlphaByOne":	true
+	},
+	"captureSoundSettings":	{
+		"fileName":	"",
+		"durationInSeconds":	144
+	},
+	"imGuiStatus":	{
+		"displayCurrentStatus":	true,
+		"displayCameraSettings":	true
+	},
+	"userTextures":	[{
+			"fileName":	""
+		}, {
+			"fileName":	""
+		}, {
+			"fileName":	""
+		}, {
+			"fileName":	""
+		}]
+}

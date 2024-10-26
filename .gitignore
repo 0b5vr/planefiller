@@ -1,0 +1,7 @@
+*
+!.gitignore
+!*.json
+!*.gfx.glsl
+!*.snd.glsl
+!LICENSE
+!README.md
