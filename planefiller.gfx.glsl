@@ -21,32 +21,49 @@ layout(location = 0) uniform int waveOutPosition;
 
 out vec4 outColor;
 
+// == constants ====================================================================================
+const float FAR = 44.0;
+
 const float PI = acos(-1.0);
 const float TAU = PI + PI;
-const float FAR = 30.0;
+const float SQRT3 = sqrt(3.0);
+const float SQRT3_OVER_TWO = SQRT3 / 2.0;
 
-const int SAMPLES_PER_FRAME = 15;
-const int TRAVERSAL_STEPS = 30;
+const float i_BPS = 2.25;
+const int i_SAMPLES = 20;
+const float i_SAMPLES_F = 20.0;
+const int i_REFLECTS = 3;
 
+// == macros =======================================================================================
 #define saturate(x) clamp(x, 0.0, 1.0)
 #define linearstep(a, b, x) min(max(((x) - (a)) / ((b) - (a)), 0.0), 1.0)
+#define lofi(i, m) (floor((i) / (m)) * (m))
 
-// == common =======================================================================================
+// == hash / random ================================================================================
 uvec3 seed;
 
 // https://www.shadertoy.com/view/XlXcW4
-vec3 hash3f( vec3 s ) {
-  uvec3 r = floatBitsToUint( s );
-  r = ( ( r >> 16u ) ^ r.yzx ) * 1111111111u;
-  r = ( ( r >> 16u ) ^ r.yzx ) * 1111111111u;
-  r = ( ( r >> 16u ) ^ r.yzx ) * 1111111111u;
-  return vec3( r ) / float( -1u );
+vec3 hash3f(vec3 s) {
+  uvec3 r = floatBitsToUint(s);
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  return vec3(r) / float(-1u);
 }
 
-vec2 cis(float t) {
-  return vec2(cos(t), sin(t));
+vec3 uniformSphere(vec2 xi) {
+  float phi = xi.x * TAU;
+  float sinTheta = 1.0 - 2.0 * xi.y;
+  float cosTheta = sqrt(1.0 - sinTheta * sinTheta);
+
+  return vec3(
+    cosTheta * cos(phi),
+    cosTheta * sin(phi),
+    sinTheta
+  );
 }
 
+// == math utils ===================================================================================
 mat2 rotate2D(float t) {
   return mat2(cos(t), -sin(t), sin(t), cos(t));
 }
@@ -58,21 +75,13 @@ mat3 orthBas(vec3 z) {
   return mat3(x, cross(z, x), z);
 }
 
-// == noise ========================================================================================
-vec3 cyclicNoise(vec3 p, float pers) {
-  vec4 sum = vec4(0.0);
-
-  for (int i = 0; i ++ < 4;) {
-    p *= orthBas(vec3(-1.0, 2.0, -3.0));
-    p += sin(p.yzx);
-    sum = (sum + vec4(cross(sin(p.zxy), cos(p)), 1.0)) / pers;
-    p *= 2.0;
-  }
-
-  return sum.xyz / sum.w;
+// == anim utils ===================================================================================
+float ease(float t, float k) {
+  float tt = fract(1.0 - t);
+  return floor(t) - (k + 1.0) * pow(tt, k) + k * pow(tt, k + 1.0);
 }
 
-// == isects =======================================================================================
+// == primitive isects =============================================================================
 vec4 isectBox(vec3 ro, vec3 rd, vec3 s) {
   vec3 xo = -ro / rd;
   vec3 xs = abs(s / rd);
@@ -80,23 +89,26 @@ vec4 isectBox(vec3 ro, vec3 rd, vec3 s) {
   vec3 dfv = xo - xs;
   vec3 dbv = xo + xs;
 
-  float df = max(max(dfv.x, dfv.y), dfv.z);
-  float db = min(min(dbv.x, dbv.y), dbv.z);
-  if (df < 0.0 || db < df) { return vec4(FAR); }
+  float df = max(dfv.x, max(dfv.y, dfv.z));
+  float db = min(dbv.x, min(dbv.y, dbv.z));
+  if (df < 0.0) { return vec4(FAR); }
+  if (db < df) { return vec4(FAR); }
 
   vec3 n = -sign(rd) * step(vec3(df), dfv);
   return vec4(n, df);
 }
 
-vec4 isectSphere(vec3 ro, vec3 rd, float r) {
-  float b = dot(ro, rd);
-  float c = dot(ro, ro) - r * r;
-  float h = b * b - c;
+vec4 isectIBox(vec3 ro, vec3 rd, vec3 s) {
+  vec3 xo = -ro / rd;
+  vec3 xs = abs(s / rd);
 
-  float rl = -b - sqrt(h);
-  if (h < 0.0 || rl < 0.0) { return vec4(FAR); }
+  vec3 dbv = xo + xs;
 
-  return vec4(normalize(ro + rd * rl), rl);
+  float db = min(dbv.x, min(dbv.y, dbv.z));
+  if (db < 0.0) { return vec4(FAR); }
+
+  vec3 n = -sign(rd) * step(dbv, vec3(db));
+  return vec4(n, db);
 }
 
 // == main =========================================================================================
@@ -104,253 +116,305 @@ void main() {
   outColor *= 0.0;
 
   vec2 uv = gl_FragCoord.xy / resolution.xy;
-  vec2 p = uv - 0.5;
-  p.x *= resolution.x / resolution.y;
 
-  vec3 seed = hash3f(vec3(p, globalTime));
   float time = globalTime;
-  float beat = time * 135.0 / 60.0;
+  vec3 seed = hash3f(vec3(uv, time));
+  float beat = time * i_BPS;
+  float beatpulse = 0.2 + 0.8 * pow(0.5 - 0.5 * cos(TAU * ease(beat, 7.0)), 0.3);
+  float beatpulse2 = exp(-5.0 * fract(beat));
 
-  for (int i = 0; i ++ < SAMPLES_PER_FRAME;) {
-    vec3 colRem = mix(
-      vec3(-0.0001, 0.0001, 1.0),
-      vec3(-0.4, 0.1, 1.0),
-      smoothstep(31.5, 32.5, beat) * smoothstep(224.5, 223.5, beat)
-    );
+  for (int i = 0; i ++ < i_SAMPLES;) {
+    vec2 p = (uv - 0.5) + (seed = hash3f(seed)).xy / resolution.y;
+    p.x *= resolution.x / resolution.y;
 
-    vec3 ro = orthBas(colRem) * vec3(1.5 * (p + (seed = hash3f(seed)).xy / resolution.y) + vec2(0, 0.1 * time), 6.0) - vec3(0.0, 0.0, 2.0);
-    vec3 rd = orthBas(colRem) * vec3(0.0, 0.0, -1.0);
+    vec3 colRem = vec3(0.4, 0.2, 1.0);
 
-    colRem /= colRem;
+    mat3 cb = orthBas(colRem);
+    vec3 ro = 10.0 * cb[2];
+    vec3 rd = cb * normalize(vec3(p, -10.0));
+    ro += rd * mix(5.0, 6.0, seed.x);
+    vec3 fp = ro + rd * 4.0;
+    ro += cb * vec3(0.01 * uniformSphere((seed = hash3f(seed)).xy).xy, 0.0);
+    rd = normalize(fp - ro);
+    ro.z -= 0.4 * time;
 
-    for (int i = 0; i ++ < TRAVERSAL_STEPS;) {
-      mat3 material = mat3(
-        vec3(0.0),
-        vec3(0.0),
-        vec3(0.0, 1.0, 0.0)
-      );
+    colRem *= (1.0 - 0.5 * length(p)) / colRem;
 
-      vec4 isect = isectBox(ro + vec3(0.0, 0.0, 5.0), rd, vec3(1E3, 1E3, 0.01));
-      vec4 isect2;
+    const float i_PLANE_INTERVAL = 0.5;
 
-      {
-        // quadtree subdivision
-        ro += rd * 0.001;
+    for (int i = 0; i ++ < i_REFLECTS;) {
+      vec3 baseColor = vec3(0.3);
+      vec3 emissive = vec3(0.0);
+      float roughness = 0.3;
+      float metallic = 1.0;
 
-        const float QUADTREE_SIZE = 0.5;
-        const float QUADTREE_DEPTH = 6.0;
-
-        float gen;
-        vec3 cell = vec3(0.0, 0.0, 0.5 * FAR);
-        vec3 cellSize = vec3(FAR);
-        vec3 cellDice = vec3(1e9);
-
-        if (ro.z < 0.0) {
-          cellSize = vec3(QUADTREE_SIZE, QUADTREE_SIZE, QUADTREE_DEPTH);
-          for (int i = 0; i ++ < 5; ) {
-            cellSize.xy *= 0.5 + 0.5 * step(gen < 96.0 ? 0.3 : gen < 160.0 ? 0.4 : gen < 256.0 ? 0.5 : 0.3, cellDice.xy);
-            cellSize.z = QUADTREE_DEPTH;
-
-            cell = (floor(ro / cellSize) + 0.5) * cellSize;
-            cell.z = 0.0;
-
-            gen = floor(
-              dot(cell + cellSize / 2.0 - vec3(0.0, 0.1 * time, 0.0), vec3(-0.03, 0.3, 0.0)) + beat
-            );
-            cellDice = hash3f(cell + clamp(gen, 31.0, 288.0));
-          }
-        }
-
-        ro -= rd * 0.001;
-
-        {
-          // quadtree traversal
-          vec3 i_src = -( ro - cell ) / rd;
-          vec3 i_dst = abs( 0.5 * cellSize / rd );
-          vec3 bvOrRot = i_src + i_dst;
-          float distToNextCell = min(min(bvOrRot.x, bvOrRot.y), bvOrRot.z);
-
-          vec3 rand = vec3(0.0);
-
-          // scene
-          bvOrRot = ro - cell + vec3(0.0, 0.0, 5.5 + cellDice.y);
-
-          cellDice = hash3f(cellDice);
-
-          isect2 = isectBox(
-            bvOrRot,
-            rd,
-            vec3(0.5 * cellSize.xy - 0.004, 4.0)
-          );
-
-          if (cell.z != 0.0) {
-            // skip
-
-          } else if (cellSize.x == cellSize.y && cellSize.x < 1.0 && cellDice.x < 0.1) { // sphere
-            if (isect2.w < isect.w) {
-              isect = isect2;
-
-              material = mat3(
-                vec3(0.04),
-                vec3(0.0),
-                vec3(0.1, 0.0, 0.0)
-              );
-            }
-
-            vec3 rotSphere = bvOrRot - vec3(0.0, 0.0, 4.0 + 0.5 * cellSize);
-            isect2 = isectSphere(
-              rotSphere,
-              rd,
-              0.4 * min(cellSize.x, cellSize.y)
-            );
-
-            if (isect2.w < isect.w) {
-              isect = isect2;
-
-              vec3 i_noise = cyclicNoise(4.0 * (ro + rd * isect.w + cellDice), 0.5);
-              // vec3 coord = ((rotSphere + rd * isect.w) * orthBas(vec3(cis(time + TAU * cellDice.z), 3.0))) / cellSize.x;
-              // material = mat3(
-              //   mix(
-              //     vec3(0.8, 0.6, 0.02),
-              //     vec3(0.02),
-              //     step(0.0, coord.z) * (
-              //       step(length(abs(coord.xy * vec2(2.0, 1.0) - vec2(0.0, 0.15)) - vec2(0.2, 0.0)), 0.1)
-              //       + step(abs(length(coord.xy) - 0.24), step(1.9, abs(atan(coord.x, coord.y))) * 0.01 + step(abs(abs(atan(coord.x, coord.y)) - 1.9), 0.05) * 0.02)
-              //     )
-              //   ),
-              //   vec3(0.0),
-              //   vec3(0.1, 0.0, 0.0)
-              // );
-
-              material = mat3(
-                vec3(0.63, 0.65, 0.66),
-                vec3(0.0),
-                vec3(0.1, 1.0, 0.0)
-              );
-            }
-          } else if (cellSize.x == cellSize.y && cellSize.x < 1.0 && cellDice.x < (gen > 63.0 ? 0.8 : 0.3)) { // holo
-            if (isect2.w < isect.w) {
-              isect = isect2;
-
-              material = mat3(
-                vec3(0.4),
-                vec3(0.0),
-                vec3(0.04, 1.0, 0.0)
-              );
-            }
-
-            vec3 rotPlane = bvOrRot - vec3(0.0, 0.0, 4.02);
-            isect2 = isectBox(
-              rotPlane,
-              rd,
-              vec3(cellSize.xy, 0.001)
-            );
-            if (isect2.w < isect.w) {
-              vec3 coord = (bvOrRot + rd * isect2.w);
-              vec2 ncoord = ((coord / (0.5 * cellSize - 0.004)).xy);
-
-              float mask = step(max(abs(ncoord.x), abs(ncoord.y)), 0.9) * (
-                cellDice.y < 0.2 ? step(length(ncoord), 0.9) * step(0.5, length(ncoord)) :
-                cellDice.y < 0.4 ? max(step(abs(ncoord.x + ncoord.y), 0.3), step(abs(ncoord.x - ncoord.y), 0.3)) :
-                cellDice.y < 0.5 ? max(step(abs(ncoord.y), 0.2), step(abs(ncoord.x), 0.2)) :
-                cellDice.y < 0.6 ? max(step(abs(ncoord.y), 0.22) * step(ncoord.x, 0.3), step(abs(abs(ncoord.y) + ncoord.x - 0.6), 0.3) * step(abs(ncoord.y), 0.8)) :
-                cellDice.y < 0.7 ? step(abs(abs(ncoord.y) - 0.4), 0.2) :
-                cellDice.y < 0.8 ? step(hash3f(floor(ncoord.xyy / 0.45) + cellDice).x, 0.5) * step(length(fract(ncoord / 0.45) - 0.5), 0.4) :
-                cellDice.y < 0.9 ? step(max(abs(ncoord.x), abs(ncoord.y)), 0.9) * step(0.6, max(abs(ncoord.x), abs(ncoord.y))) :
-                max(step(max(abs(ncoord.x), abs(ncoord.y)), 0.1), step(min(abs(ncoord.x), abs(ncoord.y)), 0.3) * step(0.3, max(abs(ncoord.x), abs(ncoord.y))) * step(max(abs(ncoord.x), abs(ncoord.y)), 0.5))
-              );
-
-              if (mask > 0.0) {
-                isect = isect2;
-
-                material = mat3(
-                  vec3(0.0),
-                  (0.54 - 0.5 * cos(9.0 * PI * max(smoothstep(128.5, 127.5, beat), smoothstep(159.5, 160.5, beat)))) * vec3(1.0, 2.0, 3.0) * (1.0 + 0.5 * sin(120.0 * (coord.y + time))),
-                  vec3(0.0, 1.0, 0.0)
-                );
-              }
-            }
-
-          } else if (cellSize.x * cellSize.y < 0.125 && cellDice.x < 0.5 * pow(smoothstep(128.0, 160.0, gen), 2.0) * step(gen, 255.0)) { // grafix
-            isect2 = isectBox(
-              bvOrRot,
-              rd,
-              vec3(0.5 * cellSize.xy - 0.004, 3.5 + smoothstep(159.5, 160.5, beat))
-            );
-
-            if (isect2.w < isect.w) {
-              isect = isect2;
-
-              vec3 coord = (bvOrRot + rd * isect.w);
-              vec3 i_gridcoord = (coord - vec3(0.0, 0.0, 4.5)) / (cellSize - 0.008) * cellSize;
-              vec2 uv = 0.5 + ((coord / (cellSize - 0.008)).xy);
-              vec3 grafix =
-                cellDice.y < 0.05 ? vec3(1.0) :
-                cellDice.y < 0.2 ? max(sin(80.0 * cyclicNoise(5.0 * coord + 8.0 * cellDice, 0.5).x + 20.0 * time + vec3(0.0, 1.0, 2.0)), 0.0) :
-                cellDice.y < 0.4 ? saturate(abs(mod(6.0 * (uv.y + time + cellDice.z) + vec3(0, 4, 2), 6.0) - 3.0) - 1.0) :
-                cellDice.y < 0.6 ? vec3(dot(1.0 - abs(isect.xyz), 1.0 - step(0.05, abs(fract(64.0 * i_gridcoord + 0.5) - 0.5)))) :
-                cellDice.y < 0.8 ? step(0.5, vec3(fract(20.0 * (abs(coord.x) + abs(coord.y) + abs(coord.z) + cellDice.z) - 3.0 * time))) :
-                cellDice.y < 0.95 ? vec3(step(hash3f(floor(coord * 256.0) + floor(beat * 4.0) + cellDice).x, 0.4)) :
-                vec3(0.02, 0.02, 1.0);
-
-              material = mat3(
-                vec3(0.0),
-                grafix,
-                vec3(0.04, 0.0, 0.0)
-              );
-            }
-
-          } else {
-            if (isect2.w < isect.w) {
-              isect = isect2;
-
-              material = mat3(
-                vec3(0.8, 0.82, 0.85),
-                vec3(0.0),
-                vec3(0.2, step(0.5, cellDice.y), 0.0)
-              );
-            }
-          }
-
-          rand += 1.0 + step(0.5, cellDice);
-
-          // should we skip the cell?
-          if (distToNextCell < isect.w) {
-            ro += distToNextCell * rd;
-            continue;
-          }
-        }
+      // floor
+      vec4 isect = vec4(0.0, 1.0, 0.0, -ro.y / rd.y);
+      if (isect.w < 0.0) {
+        isect = vec4(FAR);
       }
 
-      if (isect.w > FAR - 1.0) {
+      // floor greebles quadtree shit
+      const float i_GAP = 0.01;
+      const float i_GREEBLES_HEIGHT = 0.01;
+      float grl = max(0.0, -(ro.y - i_GREEBLES_HEIGHT) / rd.y);
+
+      for (int i = 0; i ++ < 8;) {
+        // if ray length is already further than isect, break
+        if (isect.w < grl) {
+          break;
+        }
+
+        // if already out of the greebles region, break
+        vec3 gro = ro + rd * grl;
+        if (gro.y * rd.y > 0.0 && abs(gro.y) > i_GREEBLES_HEIGHT) {
+          break;
+        }
+
+        vec3 cell, dice, size = vec3(0.125, i_GREEBLES_HEIGHT, 0.125);
+        for (int i = 0; i ++ < 4;) {
+          if (i > 1) {
+            if (dice.x < 0.1) {
+              break;
+            }
+            size.xz /= 1.0 + vec2(step(0.7, dice.y), step(dice.y, 0.4));
+          }
+
+          cell = lofi(gro, 2.0 * size) + size;
+          cell.y = 0.0;
+          dice = hash3f(cell);
+        }
+
+        vec3 i_size = size - vec2((1.0 - beatpulse) * dice.z * i_GREEBLES_HEIGHT, i_GAP).yxy;
+        vec4 isect2 = isectBox(ro - cell, rd, i_size);
+        if (isect2.w < isect.w) {
+          isect = isect2;
+          dice = hash3f(dice);
+          metallic = step(0.5, dice.x);
+          roughness = exp(-1.0 - dice.y);
+          break;
+        }
+
+        // forward to the next cell
+        grl += isectIBox(gro - cell, rd, size).w + 0.01;
+      }
+
+      // plane array
+      float side = sign(rd.z);
+      float planez = (floor(ro.z / i_PLANE_INTERVAL) + 0.5 * (1.0 + side)) * i_PLANE_INTERVAL;
+
+      for (int i = 0; i ++ < 32;) {
+        vec4 isect2 = vec4(0.0, 0.0, -side, abs((ro.z - planez) / (rd.z)));
+
+        // if the plane is already further than existing isect, break
+        if (isect.w < isect2.w) {
+          break;
+        }
+
+        vec3 rp = ro + rd * isect2.w;
+        rp.y -= i_GREEBLES_HEIGHT;
+
+        vec3 id = vec3(planez + vec3(1, 2, 3));
+        vec3 dice = hash3f(id);
+
+        float mask = 0.0;
+        float kind = fract(0.62 * planez);
+        if (kind < 0.1) {
+          // rainbow bar
+          if (abs(rp.y - 0.01) < 0.01) {
+            mask = 1.0;
+            float i_phase = TAU * dice.z + rp.x;
+            vec3 i_rainbow = 1.0 + cos(i_phase + vec3(0, 2, 4));
+            emissive += 10.0 * mask * i_rainbow * beatpulse;
+          }
+        } else if (kind < 0.2) {
+          // large pillar
+          mask = step(abs(abs(rp.x) - 0.5), 0.05);
+          emissive += vec3(5.0, 8.0, 10.0) * mask * beatpulse;
+        } else if (kind < 0.3) {
+          // rave laser
+          rp.y += 0.01;
+          float t = dice.y + floor(beat);
+          float d = min(
+            max(abs(mod((rp.xy * rotate2D(t)).x, 0.04) - 0.02), 0.0),
+            max(abs(mod((rp.xy * rotate2D(-t)).x, 0.04) - 0.02), 0.0)
+          );
+          emissive += smoothstep(2.0, 0.0, abs(rp.x)) * exp(-4.0 * rp.y) * beatpulse2 * step(d, 0.001) * vec3(0.1, 10.0, 2.0);
+        } else if (kind < 0.5) {
+          // huge stuff
+          dice = hash3f(dice + floor(beat));
+          rp.x += floor(17.0 * dice.y - 8.0) * 0.25;
+
+          if (dice.x < 0.25) {
+            // pillars
+            mask = step(abs(rp.x), 0.125) * step(abs(fract(64.0 * rp.x) - 0.5), 0.05);
+          } else if (dice.x < 0.5) {
+            // slash
+            rp.y -= 0.25;
+            mask = max(abs(rp.x) - 0.25, abs(rp.y) - 0.25);
+            mask = max(
+              max(
+                step(abs(rp.x + rp.y), 0.002),
+                step(abs(rp.x - rp.y), 0.002)
+              ) * step(mask, 0.0),
+              step(abs(mask), 0.001)
+            );
+          } else if (dice.x < 0.75) {
+            // dashed box
+            dice.yz = exp2(-4.0 * dice.yz);
+            rp.y -= dice.z;
+            float d = max(abs(rp.x) - dice.y, abs(rp.y) - dice.z);
+            float shape = step(abs(d), 0.001) * step(0.5, fract(dot(rp, vec3(32.0)) + time));
+            mask = shape;
+          } else {
+            // huge circle
+            rp.y -= 0.5;
+            mask = step(abs(length(rp.xy) - 0.5), 0.001);
+          }
+
+          emissive += 10.0 * beatpulse2 * mask;
+        } else if (abs(rp.x) < 1.0) {
+          // rgb delay shit
+          float size = 0.25;
+          dice = hash3f(vec3(floor(rp.xy / size), dice.z));
+          size /= 1.0 + step(0.5, dice.z);
+          dice = hash3f(vec3(floor(rp.xy / size), dice.z));
+          size /= 1.0 + step(0.5, dice.z);
+          dice = hash3f(vec3(floor(rp.xy / size), dice.z));
+          vec2 cp = rp.xy / size;
+
+          if (abs(cp.y - 0.5) < 0.5 && dice.y < 0.5) {
+            cp = (fract(cp.xy) - 0.5) * size / (size - 0.01);
+
+            if (abs(cp.x) < 0.5 && abs(cp.y) < 0.5) {
+              float i_off = (seed = hash3f(seed)).y;
+              vec3 col = 6.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * i_off - vec3(0.0, 0.25, 0.5))));
+
+              float phase = beat / 2.0 - 0.2 * i_off - floor(4.0 * dice.y) / 2.0;
+              phase = ease(phase, 4.0);
+              float phase0 = min(mod(phase, 2.0), 1.0);
+              float phase1 = max(mod(phase, 2.0) - 1.0, 0.0);
+
+              if (dice.z < 0.2) {
+                // circle
+                emissive += col * step(0.5 * phase0 - 0.2, length(cp)) * step(length(cp), 0.5 * phase0) * step(1.1 * phase1, fract(atan(cp.y, cp.x) / TAU - phase1 - 2.0 * TAU * dice.y));
+              } else if (dice.z < 0.4) {
+                // dot matrix
+                float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5) * step(length(fract(8.0 * cp) - 0.5), 0.3);
+                cp = floor(8.0 * cp);
+                emissive += col * shape * step(
+                  hash3f(vec3(cp, dice.y + floor(5.0 * phase - 0.1))).x,
+                  0.3 + 0.3 * cos(PI * phase)
+                );
+              } else if (dice.z < 0.6) {
+                // hex
+                cp.y += 0.05;
+                cp *= rotate2D(TAU * lofi(dice.y - phase, 1.0 / 6.0));
+                float cell = floor(atan(cp.x, cp.y) / TAU * 6.0 + 0.5);
+                cp *= rotate2D(cell / 6.0 * TAU);
+                float i_shape = (
+                  step(0.02, dot(abs(cp), vec2(-SQRT3_OVER_TWO, 0.5)))
+                  * step(0.24, cp.y)
+                  * step(cp.y, 0.44)
+                ) * step(mod(cell, 3.0), 1.0 + 1.1 * cos(PI * phase));
+                emissive += col * i_shape;
+              } else if (dice.z < 0.8) {
+                // dot matrix
+                float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5) * step(length(fract(8.0 * cp) - 0.5), 0.4);
+                cp = floor(5.0 * cp + 0.5);
+                emissive += col * step(
+                  hash3f(vec3(cp, dice.y + floor(5.0 * phase - 0.1))).x,
+                  0.5 + 0.5 * cos(PI * phase)
+                );
+              } else {
+                // arrow
+                cp /= phase0;
+
+                float blink = floor(min(8.0 * phase1, 3.0));
+
+                vec2 cpt = cp;
+                cpt.y = fract(cpt.y + 0.5 - 2.0 * phase0) - 0.5;
+                cpt.y -= clamp(cpt.y, -0.3, 0.3);
+                float d = length(cpt) - 0.07;
+                cpt = vec2(abs(cp.x), cp.y - 0.3);
+                cpt.y = fract(cpt.y + 0.5 - 2.0 * phase0) - 0.5;
+                cpt *= rotate2D(-PI / 4.0);
+                cpt.y -= clamp(cpt.y, -0.4, 0.0);
+                d = min(d, length(cpt) - 0.07);
+
+                if (blink < 2.0) {
+                  cpt = cp;
+                  cpt -= clamp(cpt, -0.4, 0.4);
+                  d = max(-d, length(cpt) - 0.08);
+                }
+
+                float shape = mix(
+                  mix(
+                    step(d, 0.0),
+                    step(abs(d), 0.01),
+                    saturate(blink)
+                  ),
+                  mix(
+                    step(d, 0.0),
+                    0.0,
+                    saturate(blink - 2.0)
+                  ),
+                  saturate(blink - 1.0)
+                );
+                emissive += col * shape;
+              }
+            }
+          }
+        }
+
+        // if the mask test misses, traverse the next plane
+        if (mask == 0.0) {
+          planez += i_PLANE_INTERVAL * side;
+          continue;
+        }
+
+        // hit!
+        isect = isect2;
+        baseColor = vec3(0.0);
+        roughness = 1.0;
+        metallic = 0.0;
         break;
       }
 
-      vec3 i_baseColor = material[0];
-      vec3 i_emissive = material[1];
-      float i_roughness = material[2].x;
-      float i_metallic = material[2].y;
+      // emissive
+      outColor.xyz += colRem * emissive;
 
-      outColor.xyz += colRem * i_emissive;
+      // the ray missed all of the above, you suck
+      if (isect.w >= FAR) {
+        break;
+      }
 
-      // if hit then
+      // now we have a hit
+
+      // early break if baseColor is zero
+      if (dot(baseColor, baseColor) < 0.0000001) {
+        break;
+      }
+
+      // set materials
       ro += isect.w * rd + isect.xyz * 0.001;
-      float sqRoughness = i_roughness * i_roughness;
+      float sqRoughness = roughness * roughness;
       float sqSqRoughness = sqRoughness * sqRoughness;
       float halfSqRoughness = 0.5 * sqRoughness;
 
+      // shading
       {
-        float NdotV = dot( isect.xyz, -rd );
-        float Fn = mix( 0.04, 1.0, pow( 1.0 - NdotV, 5.0 ) );
+        float NdotV = dot(isect.xyz, -rd);
+        float Fn = mix(0.04, 1.0, pow(1.0 - NdotV, 5.0));
         float spec = max(
           step((seed = hash3f(seed)).x, Fn), // non metallic, fresnel
-          i_metallic // metallic
+          metallic // metallic
         );
 
         // sample ggx or lambert
-        seed.y = sqrt( ( 1.0 - seed.y ) / ( 1.0 - spec * ( 1.0 - sqSqRoughness ) * seed.y ) );
-        vec3 woOrH = orthBas( isect.xyz ) * vec3(
-          sqrt( 1.0 - seed.y * seed.y ) * sin( TAU * seed.z + vec2( 0.0, TAU / 4.0 ) ),
+        seed.y = sqrt((1.0 - seed.y) / (1.0 - spec * (1.0 - sqSqRoughness) * seed.y));
+        vec3 woOrH = orthBas(isect.xyz) * vec3(
+          sqrt(1.0 - seed.y * seed.y) * sin(TAU * seed.z + vec2(0.0, TAU / 4.0)),
           seed.y
         );
 
@@ -364,22 +428,23 @@ void main() {
           }
 
           // vector math
-          float NdotL = dot( isect.xyz, i_wo );
-          float i_VdotH = dot( -rd, i_H );
-          float i_NdotH = dot( isect.xyz, i_H );
+          float NdotL = dot(isect.xyz, i_wo);
+          float i_VdotH = dot(-rd, i_H);
+          float i_NdotH = dot(isect.xyz, i_H);
 
           // fresnel
-          vec3 i_F0 = mix(vec3(0.04), i_baseColor, i_metallic);
+          vec3 i_F0 = mix(vec3(0.04), baseColor, metallic);
           vec3 i_Fh = mix(i_F0, vec3(1.0), pow(1.0 - i_VdotH, 5.0));
 
           // brdf
           // colRem *= Fh / Fn * G * VdotH / ( NdotH * NdotV );
-          colRem *= max(
-            i_Fh / mix(Fn, 1.0, i_metallic)
-              / ( NdotV * ( 1.0 - halfSqRoughness ) + halfSqRoughness ) // G1V / NdotV
-              * NdotL / ( NdotL * ( 1.0 - halfSqRoughness ) + halfSqRoughness ) // G1L
+          colRem *= clamp(
+            i_Fh / mix(Fn, 1.0, metallic)
+              / (NdotV * (1.0 - halfSqRoughness) + halfSqRoughness) // G1V / NdotV
+              * NdotL / (NdotL * (1.0 - halfSqRoughness) + halfSqRoughness) // G1L
               * i_VdotH / i_NdotH,
-            0.0
+            0.0,
+            2.0
           );
 
           // wo is finally wo
@@ -393,35 +458,33 @@ void main() {
 
           // calc H
           // vector math
-          vec3 i_H = normalize( -rd + woOrH );
-          float i_VdotH = dot( -rd, i_H );
+          vec3 i_H = normalize(-rd + woOrH);
+          float i_VdotH = dot(-rd, i_H);
 
           // fresnel
           float i_Fh = mix(0.04, 1.0, pow(1.0 - i_VdotH, 5.0));
 
           // brdf
-          colRem *= (1.0 - i_Fh) / (1.0 - Fn) * i_baseColor;
+          colRem *= clamp((1.0 - i_Fh) / (1.0 - Fn) * baseColor, 0.0, 2.0);
         }
 
         // prepare the rd for the next ray
         rd = woOrH;
-
-        // if the ray goes beind the surface, invalidate it
-        colRem *= max(step(0.0, dot(woOrH, isect.xyz)), 0.0);
       }
 
       if (dot(colRem, colRem) < 0.01) {
-        break;
+        // break;
       }
     }
-
-    outColor.xyz += vec3(1.0, 2.0, 3.0) * step(0.0, saturate(rd.z)) * colRem * step(mod(beat - 1.25 + 0.5 * rd.y, 4.0), 0.1) * smoothstep(16.0, 32.0, beat);
   }
 
-  outColor = mix(
-    max(sqrt(outColor / float(SAMPLES_PER_FRAME)), 0.0),
-    max(texture(backBuffer0, uv), 0.0),
-    0.5
-  ) * smoothstep(0.0, 16.0, beat) * smoothstep(320.0, 288.0, beat);
+  outColor.xyz = mix(
+    smoothstep(
+      vec3(0.0, -0.1, -0.2),
+      vec3(1.0, 1.1, 1.2),
+      sqrt(outColor.xyz / i_SAMPLES_F)
+    ),
+    max(texture(backBuffer0, uv), 0.0).xyz,
+    0.0
+  );
 }
-

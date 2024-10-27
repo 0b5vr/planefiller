@@ -1,11 +1,12 @@
 #version 430
 
-#define saturate(i) clamp(i,0.,1.)
-#define linearstep(a,b,x) saturate(((x)-(a))/((b)-(a)))
+#define saturate(x) clamp(x, 0.0, 1.0)
+#define linearstep(a, b, x) min(max(((x) - (a)) / ((b) - (a)), 0.0), 1.0)
+#define lofi(i, m) (floor((i) / (m)) * (m))
 #define p2f(i) (exp2(((i)-69.)/12.)*440.)
-#define repeat(i, n) for(int i=0; i<(n); i++)
 #define inRange(t,a,b) (step(a,t)*(1.-step(b,t)))
 #define inRangeB(t,a,b) ((a<=t)&&(t<b))
+#define tri(p) (1.-4.*abs(fract(p)-0.5))
 
 const float PI = acos( -1.0 );
 const float TAU = PI * 2.0;
@@ -13,31 +14,18 @@ const float GOLD = PI * (3.0 - sqrt(5.0));// 2.39996...
 
 const float BPS = 2.25;
 const float B2T = 1.0 / BPS;
-const float S2T = 0.25 * B2T;
 const float SAMPLES_PER_SEC = 48000.0;
-const float SWING = 1.15;
+const float SWING = 0.62;
 
-int SAMPLES_PER_STEP = int( SAMPLES_PER_SEC / BPS / 4.0 );
-int SAMPLES_PER_BEAT = 4 * SAMPLES_PER_STEP;
+int SAMPLES_PER_BEAT = int(SAMPLES_PER_SEC / BPS);
 
-uvec3 hash3u(uvec3 v) {
-  v = v * 1664525u + 1013904223u;
-
-  v.x += v.y * v.z;
-  v.y += v.z * v.x;
-  v.z += v.x * v.y;
-
-  v ^= v >> 16u;
-
-  v.x += v.y * v.z;
-  v.y += v.z * v.x;
-  v.z += v.x * v.y;
-
-  return v;
-}
-vec3 hash3f(vec3 v) {
-  uvec3 u = hash3u(floatBitsToUint(v));
-  return vec3(u) / float(-1u);
+// https://www.shadertoy.com/view/XlXcW4
+vec3 hash3f(vec3 s) {
+  uvec3 r = floatBitsToUint(s);
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  r = ((r >> 16u) ^ r.yzx) * 1111111111u;
+  return vec3(r) / float(-1u);
 }
 
 vec2 cis(float t) {
@@ -47,26 +35,6 @@ vec2 cis(float t) {
 mat2 rotate2D( float x ) {
   vec2 v = cis(x);
   return mat2(v.x, v.y, -v.y, v.x);
-}
-
-mat3 orthBas(vec3 z) {
-  z = normalize(z);
-  vec3 x = normalize(cross(vec3(0, 1, 0), z));
-  vec3 y = cross(z, x);
-  return mat3(x, y, z);
-}
-
-vec3 cyclicNoise(vec3 p, float pers) {
-  vec4 sum = vec4(0.0);
-
-  for (int i = 0; i ++ < 4;) {
-    p *= orthBas(vec3(-1.0, 2.0, -3.0));
-    p += sin(p.yzx);
-    sum = (sum + vec4(cross(sin(p.zxy), cos(p)), 1.0)) / pers;
-    p *= 2.0;
-  }
-
-  return sum.xyz / sum.w;
 }
 
 layout(location = 0) uniform int waveOutPosition;
@@ -80,32 +48,24 @@ layout(location = 0) uniform int waveOutPosition;
 #endif
 
 
-vec2 shotgun( float t, float spread ) {
-  vec2 sum = vec2( 0.0 );
+float t2sSwing(float t) {
+  float st = 4.0 * t / B2T;
+  return 2.0 * floor(st / 2.0) + step(SWING, fract(0.5 * st));
+}
 
-  for ( int i = 0; i < 64; i ++ ) {
-    vec3 dice = hash3f( vec3( i ) );
-    sum += vec2( sin( TAU * t * exp2( spread * dice.x ) ) ) * rotate2D( TAU * dice.y );
+float s2tSwing(float st) {
+  return 0.5 * B2T * (floor(st / 2.0) + SWING * mod(st, 2.0));
+}
+
+vec2 shotgun( float t, float spread ) {
+  vec2 sum = vec2(0.0);
+
+  for (int i = 0; i ++ < 64;) {
+    vec3 dice = hash3f(i + vec3(7, 1, 3));
+    sum += vec2(sin(TAU * t * exp2(spread * dice.x))) * rotate2D(TAU * dice.y);
   }
 
   return sum / 64.0;
-}
-
-vec2 cheapnoise(float t) {
-  uvec3 s=uvec3(t * 256.0);
-  float p=fract(t * 256.0);
-
-  vec3 dice;
-  vec2 v = vec2(0.0);
-
-  dice=vec3(hash3u(s + 0u)) / float(-1u) - vec3(0.5, 0.5, 0.0);
-  v += dice.xy * smoothstep(1.0, 0.0, abs(p + dice.z));
-  dice=vec3(hash3u(s + 1u)) / float(-1u) - vec3(0.5, 0.5, 1.0);
-  v += dice.xy * smoothstep(1.0, 0.0, abs(p + dice.z));
-  dice=vec3(hash3u(s + 2u)) / float(-1u) - vec3(0.5, 0.5, 2.0);
-  v += dice.xy * smoothstep(1.0, 0.0, abs(p + dice.z));
-
-  return 2.0 * v;
 }
 
 vec2 ladderLPF(float freq, float cutoff, float reso) {
@@ -134,248 +94,260 @@ vec2 twoPoleHPF(float freq, float cutoff, float reso) {
   );
 }
 
-vec4 quant(float x, float ks, float kt, out float i) {
-  i = floor(floor(x / ks + 1E-4) * ks / kt + 1E-4);
-
-  float s = kt <= ks
-    ? ks * floor(x / ks + 1E-4)
-    : ks * ceil(i * kt / ks - 1E-4);
-  float l = kt <= ks
-    ? ks
-    : ks * ceil((i + 1.0) * kt / ks - 1E-4) - s;
-
-  float t = x - s;
-  float q = l - t;
-
-  return vec4(s, t, s + l, q);
+mat3 orthBas(vec3 z) {
+  z = normalize(z);
+  vec3 x = normalize(cross(vec3(0, 1, 0), z));
+  vec3 y = cross(z, x);
+  return mat3(x, y, z);
 }
 
-vec4 quant(float x, float ks, float kt) {
-  float i;
-  return quant(x, ks, kt, i);
-}
+vec3 cyclic(vec3 p, float pers, float lacu) {
+  vec4 sum = vec4(0);
+  mat3 rot = orthBas(vec3(2, -3, 1));
 
-float swing(float x, float k) {
-  float xm = mod(x, 2.0);
-  return x + (1.0 - k) * linearstep(0.0, k, xm) * linearstep(2.0, k, xm);
-}
+  for (int i = 0; i ++ < 5;) {
+    p *= rot;
+    p += sin(p.zxy);
+    sum += vec4(cross(cos(p), sin(p.yzx)), 1);
+    sum /= pers;
+    p *= lacu;
+  }
 
-float unswing(float x0, float x, float y, float k) {
-  return (
-    x0
-    - 2.0 * floor((x - y) / 2.0)
-    - k * linearstep(0.0, 1.0, mod(x - y, 2.0))
-    - (2.0 - k) * linearstep(1.0, 2.0, mod(x - y, 2.0))
-  );
+  return sum.xyz / sum.w;
 }
-
-float cheapFilterSaw( float phase, float k ) {
-  float i_wave = fract( phase );
-  float i_c = smoothstep( 1.0, 0.0, i_wave / k );
-  return ( i_wave + i_c ) * 2.0 - 1.0 - k;
-}
-
-float CHORDS[] = float[](
-  0.0, 2.0, 3.0, 7.0, 14.0, 15.0, 19.0, 22.0,
-  -5.0, 2.0, 3.0, 5.0, 7.0, 10.0, 14.0, 15.0,
-  -4.0, 0.0, 3.0, 7.0, 14.0, 15.0, 19.0, 24.0,
-  -7.0, 0.0, 7.0, 8.0, 10.0, 12.0, 15.0, 19.0
-);
 
 void main() {
+  const float i_TENKAI_HELLO_RIM = 32.0;
+  const float i_TENKAI_HELLO_RAVE = 32.0;
+  const float i_TENKAI_HELLO_KICK = 64.0;
+  const float i_TENKAI_HELLO_HIHAT = 96.0;
+  const float i_TENKAI_HELLO_BASS = 96.0;
+  const float i_TENKAI_HELLO_HIHAT_16TH = 128.0;
+  const float i_TENAKI_HELLO_CLAP = 128.0;
+  const float i_TENKAI_FULLHOUSE = 160.0;
+  const float i_TENKAI_TRANS = 192.0;
+
   int frame = int(gl_GlobalInvocationID.x) + waveOutPosition;
-  vec4 time = vec4(frame % (SAMPLES_PER_BEAT * ivec4(1, 4, 64, 65536))) / SAMPLES_PER_SEC;
+  int tempoutframe = frame;
+  frame += int(0) * SAMPLES_PER_BEAT;
+  vec4 time = vec4(frame % (SAMPLES_PER_BEAT * ivec4(1, 4, 32, 65536))) / SAMPLES_PER_SEC;
   vec4 beats = time * BPS;
 
-  // return float( max( 0, frame + SAMPLES_PER_STEP * offset ) % ( SAMPLES_PER_STEP * every ) ) / SAMPLES_PER_SEC;
+  const bool i_condKickHipass = (
+    ((i_TENKAI_HELLO_BASS - 3.0) <= beats.w && beats.w < i_TENKAI_HELLO_BASS)
+  );
+
+  const float i_timeCrash = float(frame - SAMPLES_PER_BEAT * int(
+    i_TENKAI_TRANS <= beats.w ? i_TENKAI_TRANS :
+    i_TENKAI_FULLHOUSE <= beats.w ? i_TENKAI_FULLHOUSE :
+    i_TENKAI_HELLO_BASS <= beats.w ? i_TENKAI_HELLO_BASS :
+    i_TENKAI_HELLO_KICK <= beats.w ? i_TENKAI_HELLO_KICK :
+    -111.0
+  )) / SAMPLES_PER_SEC;
 
   vec2 dest = vec2(0);
-  float sidechain;
+  float sidechain = 1.0;
 
-  { // kick
+  if (i_TENKAI_HELLO_KICK <= beats.w) { // kick
     float t = time.x;
-    float q = B2T - t;
-    sidechain = 0.2 + 0.8 * smoothstep(0.0, 0.4, t) * smoothstep(0.0, 0.001, q);
 
-    float env = smoothstep(0.0, 0.001, q) * smoothstep(2.0 * B2T, 0.1 * B2T, t);
+    float env = smoothstep(0.3, 0.2, t);
 
-    if (128.0 < beats.w && beats.w < 160.0) {
-      env *= exp(-70.0 * t);
+    if (i_condKickHipass) { // hi-pass like
+      env *= exp(-60.0 * t);
     }
 
-    if (32.0 < beats.w && beats.w < 287.9) {
-      float wave = sin(
-        270.0 * t
-        - 40.0 * exp(-t * 20.0)
-        - 20.0 * exp(-t * 60.0)
-        - 10.0 * exp(-t * 300.0)
-        - 0.4 * sin(120.0 * t)
-      );
-      dest += 0.6 * tanh(2.0 * env * wave);
-    }
+    vec2 wave = vec2(0.0);
+    vec2 phase = vec2(44.0 * t);
+    phase -= 9.0 * exp(-22 * t);
+    phase -= 3.0 * exp(-44 * t);
+    phase -= 3.0 * exp(-666 * t);
+    wave += sin(TAU * phase);
+
+    dest += 0.5 * env * tanh(1.3 * wave);
+
+    sidechain = smoothstep(0.0, 0.7 * B2T, t) * smoothstep(B2T, 0.99 * B2T, t);
   }
 
-  if (64.0 - 0.75 < beats.w && beats.w < 256.0) { // hihat
-    float t = mod(time.x, S2T);
-    float st = mod(floor(time.y / S2T), 16.0);
+  if (96.0 < beats.w) { // hihat
+    float t = mod(time.y, 4.0 * B2T);
+    float st = t2sSwing(t);
+    st = mix(
+      st < 2.0 ? st : lofi(st, 2.0),
+      st,
+      step(i_TENKAI_HELLO_HIHAT_16TH, beats.w)
+    );
+    float stt = s2tSwing(st);
+    t -= stt;
 
-    float vel = fract(st * 0.2 + 0.42);
-    float env = exp(-exp2(7.0 - 3.0 * vel) * t);
+    float vel = fract(st * 0.38);
+    float env = exp(-exp2(6.0 - 1.0 * vel - float(mod(st, 4.0) == 2.0)) * t);
     vec2 wave = shotgun(6000.0 * t, 2.0);
-    dest += 0.2 * env * sidechain * tanh(8.0 * wave);
+    dest += 0.13 * env * mix(0.2, 1.0, sidechain) * tanh(8.0 * wave);
   }
 
-  if (96.0 < beats.w && beats.w < 290.0) { // clap
-    float t = mod(time.y + S2T, 4.0 * B2T);
-
-    float env = mix(
-      exp(-26.0 * t),
-      exp(-200.0 * mod(t, 0.013)),
-      exp(-80.0 * max(0.0, t - 0.02))
-    );
-
-    vec2 wave = cyclicNoise(vec3(4.0 * cis(800.0 * t), 1940.0 * t), 1.5).xy;
-
-    dest += 0.1 * tanh(20.0 * env * wave);
-  }
-
-  if (32.0 < beats.w && beats.w < 256.0) { // shaker
-    float t = mod(time.x, S2T);
-    float st = mod(floor(time.y / S2T), 16.0);
-
-    float vel = fract(st * 0.41 + 0.63);
-    float env = smoothstep(0.0, 0.02, t) * exp(-exp2(6.0 - 3.0 * vel) * t);
-    vec2 wave = cyclicNoise(vec3(cis(2800.0 * t), exp2(8.0 + 3.0 * vel) * t), 0.8).xy;
-    dest += 0.15 * env * sidechain * tanh(2.0 * wave);
-  }
-
-  { // perc 1
-    float t = mod(time.z - S2T, 6.0 * S2T);
-
-    float env = mix(
-      exp(-t),
-      exp(-30.0 * t),
-      0.95
-    );
-    vec2 wave = sin(7100.0 * t + vec2(0, PI / 2.0) + 10.0 * cheapnoise(t));
-    dest += 0.3 * env * tanh(wave) * smoothstep(128.0, 160.0, beats.w);
-  }
-
-  { // perc 2
-    float t = mod(time.z - 3.0 * S2T, 6.0 * S2T);
-
-    float env = mix(
-      exp(-t),
-      exp(-30.0 * t),
-      0.95
-    );
-    vec2 wave = 2.0 * fract(1200.0 * t + sin(1000.0 * t) + vec2(0.0, 0.25)) - 1.0;
-    dest += 0.3 * env * tanh(wave) * smoothstep(128.0, 160.0, beats.w);
-  }
-
-  { // beep
-    float t = mod(time.y - 5.0 * S2T, 16.0 * S2T);
-
-    float env = smoothstep(0.0, 0.001, t) * mix(
-      exp(-2.0 * t),
-      smoothstep(0.0, 0.001, 0.07 - t),
-      0.98
-    );
-    vec2 wave = sin(50000.0 * t + vec2(PI / 2.0, 0));
-    dest += 0.2 * env * wave * smoothstep(16.0, 32.0, beats.w);
-  }
-
-  if (96.0 < beats.w) { // crash
-    float t = mod(time.z - 32.0 * B2T, 64.0 * B2T);
-
-    float env = mix(exp(-t), exp(-10.0 * t), 0.7);
-    vec2 wave = shotgun(3800.0 * t, 2.0);
-    dest += 0.3 * env * sidechain * tanh(8.0 * wave);
-  }
-
-  if (160.0 < beats.w && beats.w < 224.0) { // ride
-    float t = mod(time.x, 2.0 * S2T);
-    float q = 2.0 * S2T - t;
-
-    float env = exp(-5.0 * t);
+  if (i_TENKAI_FULLHOUSE <= beats.w) { // open hihat
+    float t = mod(time.x - 0.5 * B2T, B2T);
 
     vec2 sum = vec2(0.0);
 
-    repeat(i, 8) {
+    for (int i = 0; i ++ < 8;) {
       vec3 dice = hash3f(vec3(i));
       vec3 dice2 = hash3f(dice);
 
       vec2 wave = vec2(0.0);
-      wave = 4.5 * env * sin(wave + exp2(12.10 + 0.1 * dice.x) * t + dice2.xy);
-      wave = 2.2 * env * sin(wave + exp2(14.67 + 0.5 * dice.y) * t + dice2.yz);
-      wave = 1.0 * env * sin(wave + exp2(13.89 + 1.0 * dice.z) * t + dice2.zx);
+      wave = 4.5 * exp(-5.0 * t) * sin(wave + exp2(13.30 + 0.1 * dice.x) * t + dice2.xy);
+      wave = 3.2 * exp(-1.0 * t) * sin(wave + exp2(11.78 + 0.3 * dice.y) * t + dice2.yz);
+      wave = 1.0 * exp(-5.0 * t) * sin(wave + exp2(14.92 + 0.2 * dice.z) * t + dice2.zx);
 
       sum += wave;
     }
 
-    dest += 0.08 * env * sidechain * tanh(sum);
+    dest += 0.1 * exp(-10.0 * t) * sidechain * tanh(2.0 * sum);
   }
 
-  { // additive riff
+  if (i_TENKAI_HELLO_RIM <= beats.w) { // rim
+    float t = time.y;
+    float st = t2sSwing(t);
+    float stt = s2tSwing(st);
+    t -= stt;
+
+    float env = step(0.0, t) * exp(-300.0 * t) * step(0.3, fract(0.38 * st));
+
+    float wave = tanh(4.0 * (
+      + tri(t * 400.0 - 0.5 * env)
+      + tri(t * 1500.0 - 0.5 * env)
+    ));
+
+    dest += 0.2 * env * vec2(wave) * rotate2D(st);
+  }
+
+  if (i_TENKAI_FULLHOUSE <= beats.w) { // ride
+    float t = mod(time.x, 0.5 * B2T);
+    float q = 0.5 * B2T - t;
+
+    float env = exp(-3.0 * t) * smoothstep(0.0, 0.01, q);
+
     vec2 sum = vec2(0.0);
 
-    float t = mod(time.x, S2T);
-    float q = S2T - t;
-    float st = floor(time.z / S2T);
-    float env = smoothstep(0.0, 0.01, t) * smoothstep(0.0, 0.01, q);
+    for (int i = 0; i ++ < 8;) {
+      vec3 dice = hash3f(vec3(i));
+      vec3 dice2 = hash3f(dice);
 
-    float basefreq = 80.0;
-    float stmod = fract(0.615 * st);
+      vec2 wave = vec2(0.0);
+      wave = 2.9 * env * sin(wave + exp2(13.10 + 0.4 * dice.x) * t + dice2.xy);
+      wave = 2.8 * env * sin(wave + exp2(14.97 + 0.4 * dice.y) * t + dice2.yz);
+      wave = 1.0 * env * sin(wave + exp2(14.09 + 1.0 * dice.z) * t + dice2.zx);
 
-    float cutenv = smoothstep(0.0, 0.01, t) * exp(-14.0 * t);
-    float cutoff = exp2(
-      5.0
-      - 2.0 * smoothstep(32.0, 16.0, beats.w)
-      + 2.5 * smoothstep(128.0, 160.0, beats.w)
-      - step(256.0, beats.w)
-      - 2.0 * smoothstep(288.0, 320.0, beats.w)
-      + 3.0 * stmod
-      + 4.0 * cutenv
+      sum += wave;
+    }
+
+    dest += 0.04 * env * mix(0.3, 1.0, sidechain) * tanh(sum);
+  }
+
+  if (i_TENAKI_HELLO_CLAP <= beats.w) { // clap
+    float t = mod(time.y - B2T, 2.0 * B2T);
+
+    float env = mix(
+      exp(-50.0 * t),
+      exp(-400.0 * mod(t, 0.012)),
+      exp(-80.0 * max(0.0, t - 0.02))
     );
 
-    repeat(i, 128) {
-      float fi = float(i);
+    vec2 wave = cyclic(vec3(4.0 * cis(800.0 * t), 840.0 * t), 0.5, 2.0).xy;
 
-      float p = 1.0 + fi;
-      p = pow(p, 1.1); // metal
-      p = mix(p, 1.0, 0.1); // centroid
-      float freq = basefreq * p;
-
-      vec2 phase = vec2(t * freq);
-      vec2 lpf = ladderLPF(freq, cutoff, 0.3);
-      vec2 hpf = twoPoleHPF(freq, 200.0, 0.0);
-
-      sum += sin(TAU * phase + lpf.y + hpf.y) / p * lpf.x * hpf.x * env * rotate2D(2.4 * fi);
-    }
-
-    dest += 0.2 * mix(0.2, 1.0, sidechain) * tanh(5.0 * sum) * smoothstep(8.0, 32.0, beats.w);
+    dest += 0.12 * tanh(20.0 * env * wave);
   }
 
-  if (beats.w < 224.0) { // oidos drone
-    vec2 sum=vec2(0.0);
+  { // crash
+    float t = i_timeCrash;
 
-    repeat(i, 2500) {
-      vec3 diceA = hash3f(vec3(i / 50));
-      vec3 diceB = hash3f(vec3(i));
-
-      float t = mod(time.z - diceA.x * (64.0 * B2T), 64.0 * B2T);
-      float env = sin(PI * t / (64.0 * B2T));
-
-      float tone = 8.0 + 9.0 * diceA.y + 0.06 * diceB.y;
-      float freq = exp2(tone);
-      vec2 phase = t * freq + fract(diceB.xy * 999.0);
-      phase += 0.1 * fract(32.0 * phase); // add high freq
-
-      sum += sin(TAU * phase) * env / 1000.0;
-    }
-
-    dest += 1.0 * mix(0.2, 1.0, sidechain) * sum * smoothstep(0.0, 32.0, beats.w);
+    float env = mix(exp(-t), exp(-10.0 * t), 0.7);
+    vec2 wave = shotgun(4000.0 * t, 2.5);
+    dest += 0.4 * env * mix(0.1, 1.0, sidechain) * tanh(8.0 * wave);
   }
 
-  waveOutSamples[frame] = clamp(dest, -1.0, 1.0) * smoothstep(320.0, 288.0, beats.w);
+  { // chord stuff
+    const int N_CHORD = 8;
+    const int CHORD[N_CHORD] = int[](
+      0, 7, 10, 12, 15, 17, 19, 22
+    );
+
+    float t = mod(time.z, 8.0 * B2T);
+    float st = max(1.0, lofi(mod(t2sSwing(t) - 1.0, 32.0), 3.0) + 1.0);
+    float stt = s2tSwing(st);
+    t = mod(t - stt, 8.0 * B2T);
+    float nst = min(st + 3.0, 33.0);
+    float nstt = s2tSwing(nst);
+    float l = nstt - stt;
+    float q = l - t;
+
+    if (beats.w < i_TENKAI_HELLO_RAVE) {
+      t = time.z;
+      q = i_TENKAI_HELLO_RAVE * B2T - t;
+    }
+
+    float env = smoothstep(0.0, 0.001, t) * smoothstep(0.0, 0.001, q);
+    float trans = 3.0 * step(beats.w, i_TENKAI_TRANS) + step(i_TENKAI_HELLO_RAVE, beats.w) * step(st, 3.0);
+
+    if (i_TENKAI_HELLO_BASS <= beats.w) { // bass
+      float note = 24.0 + trans + float(CHORD[0]);
+      float freq = p2f(note);
+      float phase = freq * t;
+      float wave = tanh(2.0 * sin(TAU * phase));
+
+      dest += 0.5 * sidechain * env * wave;
+    }
+
+    if (beats.w < i_TENKAI_HELLO_RAVE) { // longnote
+      env *= smoothstep(1.0, i_TENKAI_HELLO_RAVE, beats.w);
+    } else if (i_TENKAI_FULLHOUSE < beats.w) { // longer env
+      env *= mix(
+        smoothstep(1.0 * l, 0.8 * l, t),
+        exp(-t),
+        0.1
+      );
+    } else { // shorter env
+      env *= mix(
+        smoothstep(0.6 * l, 0.4 * l, t),
+        exp(-t),
+        0.1
+      );
+    }
+
+    { // choir
+      vec2 sum = vec2(0.0);
+
+      for (int i = 0; i ++ < 64;) {
+        float fi = float(i);
+        vec3 dice = hash3f(i + vec3(5, 4, 2));
+
+        float note = 48.0 + trans + float(CHORD[i % N_CHORD]);
+        float freq = p2f(note) * exp(0.012 * tan(2.0 * dice.y - 1.0));
+        // float freq = p2f(note) * exp(0.012 * tan(2.0 * dice.x - 1.0));
+        float phase = lofi(t * freq, 1.0 / 16.0);
+
+        vec3 c = vec3(0.0);
+        vec3 d = vec3(2.0, -3.0, -8.0);
+        vec2 wave = 1.0 * cyclic(fract(phase) * d, 0.5, 2.0).xy;
+
+        sum += vec2(wave) * rotate2D(fi);
+      }
+
+      dest += 0.04 * mix(0.1, 1.0, sidechain) * env * sum;
+    }
+
+    if (i_TENKAI_FULLHOUSE <= beats.w) { // arp
+      int iarp = int(16.0 * t / B2T);
+      float note = 48.0 + trans + float(CHORD[iarp % N_CHORD]) + 12.0 * float((iarp % 3) / 2);
+      float freq = p2f(note);
+      float phase = TAU * lofi(t * freq, 1.0 / 16.0);
+
+      vec2 wave = cyclic(vec3(cis(phase), iarp), 0.5, 2.0).xy * rotate2D(time.w);
+
+      dest += 0.2 * sidechain * env * wave;
+    }
+  }
+
+  waveOutSamples[tempoutframe] = clamp(1.3 * tanh(dest), -1.0, 1.0);
 }
