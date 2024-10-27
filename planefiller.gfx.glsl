@@ -36,7 +36,6 @@ const int i_REFLECTS = 3;
 
 // == macros =======================================================================================
 #define saturate(x) clamp(x, 0.0, 1.0)
-#define linearstep(a, b, x) min(max(((x) - (a)) / ((b) - (a)), 0.0), 1.0)
 #define lofi(i, m) (floor((i) / (m)) * (m))
 
 // == hash / random ================================================================================
@@ -143,10 +142,9 @@ void main() {
     const float i_PLANE_INTERVAL = 0.5;
 
     for (int i = 0; i ++ < i_REFLECTS;) {
-      vec3 baseColor = vec3(0.3);
       vec3 emissive = vec3(0.0);
       float roughness = 0.3;
-      float metallic = 1.0;
+      float mask = 0.0;
 
       // floor
       vec4 isect = vec4(0.0, 1.0, 0.0, -ro.y / rd.y);
@@ -190,7 +188,6 @@ void main() {
         if (isect2.w < isect.w) {
           isect = isect2;
           dice = hash3f(dice);
-          metallic = step(0.5, dice.x);
           roughness = exp(-1.0 - dice.y);
           break;
         }
@@ -217,8 +214,7 @@ void main() {
         vec3 id = vec3(planez + vec3(1, 2, 3));
         vec3 dice = hash3f(id);
 
-        float mask = 0.0;
-        float kind = fract(0.62 * planez);
+        float kind = fract(1.52 * planez);
         if (kind < 0.1) {
           // rainbow bar
           if (abs(rp.y - 0.01) < 0.01) {
@@ -261,7 +257,7 @@ void main() {
             );
           } else if (dice.x < 0.75) {
             // dashed box
-            dice.yz = exp2(-4.0 * dice.yz);
+            dice.yz = exp(-3.0 * dice.yz);
             rp.y -= dice.z;
             float d = max(abs(rp.x) - dice.y, abs(rp.y) - dice.z);
             float shape = step(abs(d), 0.001) * step(0.5, fract(dot(rp, vec3(32.0)) + time));
@@ -375,14 +371,17 @@ void main() {
 
         // hit!
         isect = isect2;
-        baseColor = vec3(0.0);
-        roughness = 1.0;
-        metallic = 0.0;
+        roughness = 0.0;
         break;
       }
 
       // emissive
       outColor.xyz += colRem * emissive;
+
+      // if mask is set, break
+      if (mask > 0.0) {
+        break;
+      }
 
       // the ray missed all of the above, you suck
       if (isect.w >= FAR) {
@@ -390,11 +389,6 @@ void main() {
       }
 
       // now we have a hit
-
-      // early break if baseColor is zero
-      if (dot(baseColor, baseColor) < 0.0000001) {
-        break;
-      }
 
       // set materials
       ro += isect.w * rd + isect.xyz * 0.001;
@@ -406,74 +400,46 @@ void main() {
       {
         float NdotV = dot(isect.xyz, -rd);
         float Fn = mix(0.04, 1.0, pow(1.0 - NdotV, 5.0));
-        float spec = max(
-          step((seed = hash3f(seed)).x, Fn), // non metallic, fresnel
-          metallic // metallic
-        );
+        float spec = 1.0;
 
         // sample ggx or lambert
-        seed.y = sqrt((1.0 - seed.y) / (1.0 - spec * (1.0 - sqSqRoughness) * seed.y));
-        vec3 woOrH = orthBas(isect.xyz) * vec3(
+        seed.y = sqrt((1.0 - seed.y) / (1.0 - (1.0 - sqSqRoughness) * seed.y));
+        vec3 i_H = orthBas(isect.xyz) * vec3(
           sqrt(1.0 - seed.y * seed.y) * sin(TAU * seed.z + vec2(0.0, TAU / 4.0)),
           seed.y
         );
 
-        if (spec > 0.0) {
-          // specular
-          // note: woOrH is H right now
-          vec3 i_H = woOrH;
-          vec3 i_wo = reflect(rd, i_H);
-          if (dot(i_wo, isect.xyz) < 0.0) {
-            break;
-          }
-
-          // vector math
-          float NdotL = dot(isect.xyz, i_wo);
-          float i_VdotH = dot(-rd, i_H);
-          float i_NdotH = dot(isect.xyz, i_H);
-
-          // fresnel
-          vec3 i_F0 = mix(vec3(0.04), baseColor, metallic);
-          vec3 i_Fh = mix(i_F0, vec3(1.0), pow(1.0 - i_VdotH, 5.0));
-
-          // brdf
-          // colRem *= Fh / Fn * G * VdotH / ( NdotH * NdotV );
-          colRem *= clamp(
-            i_Fh / mix(Fn, 1.0, metallic)
-              / (NdotV * (1.0 - halfSqRoughness) + halfSqRoughness) // G1V / NdotV
-              * NdotL / (NdotL * (1.0 - halfSqRoughness) + halfSqRoughness) // G1L
-              * i_VdotH / i_NdotH,
-            0.0,
-            2.0
-          );
-
-          // wo is finally wo
-          woOrH = i_wo;
-        } else {
-          // diffuse
-          // note: woOrH is wo right now
-          if (dot(woOrH, isect.xyz) < 0.0) {
-            break;
-          }
-
-          // calc H
-          // vector math
-          vec3 i_H = normalize(-rd + woOrH);
-          float i_VdotH = dot(-rd, i_H);
-
-          // fresnel
-          float i_Fh = mix(0.04, 1.0, pow(1.0 - i_VdotH, 5.0));
-
-          // brdf
-          colRem *= clamp((1.0 - i_Fh) / (1.0 - Fn) * baseColor, 0.0, 2.0);
+        // specular
+        vec3 wo = reflect(rd, i_H);
+        if (dot(wo, isect.xyz) < 0.0) {
+          break;
         }
 
+        // vector math
+        float NdotL = dot(isect.xyz, wo);
+        float i_VdotH = dot(-rd, i_H);
+        float i_NdotH = dot(isect.xyz, i_H);
+
+        // fresnel
+        vec3 i_baseColor = vec3(0.3);
+        vec3 i_F0 = i_baseColor;
+        vec3 i_Fh = mix(i_F0, vec3(1.0), pow(1.0 - i_VdotH, 5.0));
+
+        // brdf
+        // colRem *= Fh / Fn * G * VdotH / ( NdotH * NdotV );
+        colRem *= saturate(
+          i_Fh
+            / (NdotV * (1.0 - halfSqRoughness) + halfSqRoughness) // G1V / NdotV
+            * NdotL / (NdotL * (1.0 - halfSqRoughness) + halfSqRoughness) // G1L
+            * i_VdotH / i_NdotH
+        );
+
         // prepare the rd for the next ray
-        rd = woOrH;
+        rd = wo;
       }
 
       if (dot(colRem, colRem) < 0.01) {
-        // break;
+        break;
       }
     }
   }
