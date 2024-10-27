@@ -80,6 +80,60 @@ float ease(float t, float k) {
   return floor(t) - (k + 1.0) * pow(tt, k) + k * pow(tt, k + 1.0);
 }
 
+// == 2d sdfs ======================================================================================
+float sdcapsule2(vec2 p, vec2 tail) {
+  float i_t = saturate(dot(p, tail) / dot(tail, tail));
+  return length(p - i_t * tail);
+}
+
+// == text =========================================================================================
+vec2 domaingrid(vec2 v) {
+  return v + vec2(-0.5, 0.5) * (step(2.0, v) + step(5.0, v)) - vec2(2.5, 3.5);
+}
+
+float sddomainseg(vec2 p, vec2 a, vec2 b) {
+  a = domaingrid(a);
+  b = domaingrid(b);
+  return sdcapsule2(p - a, b - a);
+}
+
+float sddoamina(vec2 p) {
+  float d = sddomainseg(p, vec2(0, 0), vec2(0, 3));
+  d = min(d, sddomainseg(p, vec2(0, 3), vec2(2, 6)));
+  d = min(d, sddomainseg(p, vec2(2, 6), vec2(4, 6)));
+  d = min(d, sddomainseg(p, vec2(4, 6), vec2(6, 3)));
+  d = min(d, sddomainseg(p, vec2(6, 3), vec2(6, 0)));
+  d = min(d, sddomainseg(p, vec2(0, 2), vec2(6, 2)));
+  return d;
+}
+
+float sddomainchar(vec2 p, int c) {
+  const int VERTICES[] = int[](16,12,11,10,16,15,36,35,05,65,01,61,16,10,56,50,65,56,16,05,04,13,53,62,61,50,10,01,36,30,06,26,24,04,06,42,62,60,40,42,66,65,01,00,63,53,42,41,30,10,01,02,13,33,44,45,36,16,05,04,13,33,42,41,50,60,16,15,36,25,21,30,06,15,11,00,36,32,65,03,05,63,35,31,03,63,11,00,03,43,11,10,66,65,01,00,10,50,61,65,56,16,05,01,10,65,01,16,26,35,30,10,50,05,16,56,65,64,53,13,02,00,60,05,16,56,65,64,53,33,53,62,61,50,10,01,06,04,13,63,66,60,06,66,06,04,54,63,61,50,10,01,56,16,05,01,10,50,61,62,53,03,06,66,65,11,10,56,16,05,04,13,53,62,61,50,10,01,02,13,53,64,65,56,63,13,04,05,16,56,65,61,50,10,01,14,13,11,10,14,13,11,00,65,03,61,04,64,01,61,05,63,01,05,16,56,65,64,53,33,32,31,30,36,33,42,52,63,65,56,16,05,01,10,50,00,03,26,46,63,60,02,62,00,06,56,65,64,53,03,53,62,61,50,00,65,56,16,05,01,10,50,61,06,00,06,56,65,61,50,00,06,66,03,63,06,00,60,06,66,03,53,06,00,65,56,16,05,01,10,50,61,63,43,06,00,03,63,66,60,16,10,66,61,50,10,01,02,06,00,66,65,43,03,43,61,60,06,00,60,00,06,33,32,33,66,60,00,06,60,66,10,50,61,65,56,16,05,01,10,00,06,56,65,64,53,03,10,50,61,65,56,16,05,01,10,42,61,00,06,56,65,64,53,03,53,62,60,65,56,16,05,04,13,53,62,61,50,10,01,06,66,36,30,06,01,10,50,61,66,06,03,20,40,63,66,06,00,33,34,33,60,66,06,05,61,60,66,65,01,00,06,05,33,66,65,33,30,06,66,65,01,00,60,36,26,20,30,06,05,61,60,06,16,10,00,14,36,54,00,60,06,15);
+  const int SEGMENTS[] = int[](0,2,4,6,8,10,12,14,16,28,30,35,40,44,66,68,72,76,78,80,82,84,86,88,90,92,96,105,107,111,113,123,130,136,140,142,144,152,162,167,184,195,197,199,201,203,206,208,210,213,221,223,235,241,243,250,255,263,265,271,273,275,278,280,282,284,294,296,298,300,302,308,310,314,317,320,324,327,331,340,347,356,358,365,368,380,382,384,390,396,400,403,407,411,414,418,424,428,432,436,439,441,443);
+  const int CHARS[] = int[](0,2,4,8,10,13,14,15,16,17,20,22,23,24,25,26,28,30,31,33,35,37,38,39,40,41,43,45,46,48,49,51,52,54,56,57,59,62,65,66,69,70,71,74,75,77,78,79,80,82,84,85,87,88,89,91,93,95,96,97,98,99,100,101,102);
+
+  float d = 1.0;
+
+  if (abs(p.x) > 3.0 || abs(p.y) > 4.0) {
+    return 1.0;
+  }
+
+  int i_char = CHARS[c];
+  for (int i = CHARS[c]; i < CHARS[c + 1]; i ++) {
+    int seg0 = SEGMENTS[i];
+    int seg1 = SEGMENTS[i + 1] - 1;
+
+    for (int i = seg0; i < seg1; i ++) {
+      int v0 = VERTICES[i];
+      int v1 = VERTICES[i + 1];
+
+      d = min(d, sddomainseg(p, vec2(v0 / 10, v0 % 10), vec2(v1 / 10, v1 % 10)));
+    }
+  }
+
+  return d;
+}
+
 // == primitive isects =============================================================================
 vec4 isectBox(vec3 ro, vec3 rd, vec3 s) {
   vec3 xo = -ro / rd;
@@ -283,60 +337,68 @@ void main() {
             cp = (fract(cp.xy) - 0.5) * size / (size - 0.01);
 
             if (abs(cp.x) < 0.5 && abs(cp.y) < 0.5) {
-              float i_off = (seed = hash3f(seed)).y;
-              vec3 col = 6.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * i_off - vec3(0.0, 0.25, 0.5))));
+              float off = (seed = hash3f(seed)).y;
+              vec3 col = 6.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * off - vec3(0.0, 0.25, 0.5))));
 
-              float phase = beat / 2.0 - 0.2 * i_off - floor(4.0 * dice.y) / 2.0;
-              phase = ease(phase, 4.0);
-              float phase0 = min(mod(phase, 2.0), 1.0);
-              float phase1 = max(mod(phase, 2.0) - 1.0, 0.0);
+              float timegroup = floor(4.0 * dice.y);
+              float phase = beat / 2.0 - 0.2 * off - timegroup / 2.0;
+              float ephase = ease(phase, 6.0);
+              float ephase0 = min(mod(ephase, 2.0), 1.0);
+              float ephase1 = max(mod(ephase, 2.0) - 1.0, 0.0);
 
               if (dice.z < 0.2) {
                 // circle
-                emissive += col * step(0.5 * phase0 - 0.2, length(cp)) * step(length(cp), 0.5 * phase0) * step(1.1 * phase1, fract(atan(cp.y, cp.x) / TAU - phase1 - 2.0 * TAU * dice.y));
+                emissive += col * step(0.5 * ephase0 - 0.2, length(cp)) * step(length(cp), 0.5 * ephase0) * step(1.1 * ephase1, fract(atan(cp.y, cp.x) / TAU - ephase1 - 2.0 * TAU * dice.y));
               } else if (dice.z < 0.4) {
                 // dot matrix
                 float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5) * step(length(fract(8.0 * cp) - 0.5), 0.3);
                 cp = floor(8.0 * cp);
+                float i_rand = floor(12.0 * min(fract(phase), 0.5));
                 emissive += col * shape * step(
-                  hash3f(vec3(cp, dice.y + floor(5.0 * phase - 0.1))).x,
-                  0.3 + 0.3 * cos(PI * phase)
+                  hash3f(vec3(cp, dice.y + i_rand)).x,
+                  0.3 - 0.3 * cos(PI * ephase)
                 );
               } else if (dice.z < 0.6) {
                 // hex
                 cp.y += 0.05;
-                cp *= rotate2D(TAU * lofi(dice.y - phase, 1.0 / 6.0));
+                cp *= rotate2D(TAU * lofi(dice.y - ephase, 1.0 / 6.0));
                 float cell = floor(atan(cp.x, cp.y) / TAU * 6.0 + 0.5);
                 cp *= rotate2D(cell / 6.0 * TAU);
                 float i_shape = (
                   step(0.02, dot(abs(cp), vec2(-SQRT3_OVER_TWO, 0.5)))
                   * step(0.24, cp.y)
                   * step(cp.y, 0.44)
-                ) * step(mod(cell, 3.0), 1.0 + 1.1 * cos(PI * phase));
+                ) * step(mod(cell, 3.0), 1.0 - 1.1 * cos(PI * ephase));
                 emissive += col * i_shape;
               } else if (dice.z < 0.8) {
-                // dot matrix
-                float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5) * step(length(fract(8.0 * cp) - 0.5), 0.4);
+                // blink rect
                 cp = floor(5.0 * cp + 0.5);
-                emissive += col * step(
-                  hash3f(vec3(cp, dice.y + floor(5.0 * phase - 0.1))).x,
-                  0.5 + 0.5 * cos(PI * phase)
+                float i_rand = floor(16.0 * phase);
+                float i_shape = step(
+                  hash3f(vec3(cp, dice.y + i_rand)).x,
+                  0.5 - 0.5 * cos(PI * ephase)
                 );
+                emissive += col * i_shape;
+              } else if (dice.z < 0.9) {
+                // char
+                float i_rand = floor(30.0 * min(fract(phase), 0.2)) + floor(phase);
+                int i_char = int(64.0 * hash3f(dice + i_rand).x);
+                float i_d = sddomainchar(10.0 * cp, i_char);
+                emissive += col * step(i_d, 0.2);
               } else {
                 // arrow
-                cp /= phase0;
+                cp /= ephase0;
 
-                float blink = floor(min(8.0 * phase1, 3.0));
+                float blink = floor(min(8.0 * ephase1, 3.0));
 
-                vec2 cpt = cp;
-                cpt.y = fract(cpt.y + 0.5 - 2.0 * phase0) - 0.5;
-                cpt.y -= clamp(cpt.y, -0.3, 0.3);
-                float d = length(cpt) - 0.07;
-                cpt = vec2(abs(cp.x), cp.y - 0.3);
-                cpt.y = fract(cpt.y + 0.5 - 2.0 * phase0) - 0.5;
-                cpt *= rotate2D(-PI / 4.0);
-                cpt.y -= clamp(cpt.y, -0.4, 0.0);
-                d = min(d, length(cpt) - 0.07);
+                vec2 cpt = vec2(
+                  abs(cp.x),
+                  0.8 - fract(cp.y + 0.5 - 2.0 * ephase0)
+                );
+                float d = min(
+                  sdcapsule2(cpt, vec2(0.0, 0.6)),
+                  sdcapsule2(cpt, vec2(0.3, 0.3))
+                ) - 0.07;
 
                 if (blink < 2.0) {
                   cpt = cp;
