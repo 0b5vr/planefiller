@@ -185,9 +185,9 @@ void main() {
     mat3 cb = orthBas(colRem);
     vec3 ro = 10.0 * cb[2];
     vec3 rd = cb * normalize(vec3(p, -10.0));
-    ro += rd * mix(5.0, 6.0, seed.x);
-    vec3 fp = ro + rd * 4.0;
+    vec3 fp = ro + rd * 9.0;
     ro += cb * vec3(0.01 * uniformSphere((seed = hash3f(seed)).xy).xy, 0.0);
+    ro += rd * mix(5.0, 6.0, seed.x);
     rd = normalize(fp - ro);
     ro.z -= 0.4 * time;
 
@@ -271,7 +271,7 @@ void main() {
         float kind = fract(1.52 * planez);
         if (kind < 0.1) {
           // rainbow bar
-          if (abs(rp.y - 0.01) < 0.01) {
+          if (abs(rp.y - 0.02) < 0.01) {
             mask = 1.0;
             float i_phase = TAU * dice.z + rp.x;
             vec3 i_rainbow = 1.0 + cos(i_phase + vec3(0, 2, 4));
@@ -299,16 +299,13 @@ void main() {
             // pillars
             mask = step(abs(rp.x), 0.125) * step(abs(fract(64.0 * rp.x) - 0.5), 0.05);
           } else if (dice.x < 0.5) {
-            // slash
+            // x
             rp.y -= 0.25;
-            mask = max(abs(rp.x) - 0.25, abs(rp.y) - 0.25);
+            float i_range = max(abs(rp.x) - 0.25, abs(rp.y) - 0.25);
             mask = max(
-              max(
-                step(abs(rp.x + rp.y), 0.002),
-                step(abs(rp.x - rp.y), 0.002)
-              ) * step(mask, 0.0),
-              step(abs(mask), 0.001)
-            );
+              step(abs(rp.x + rp.y), 0.002),
+              step(abs(rp.x - rp.y), 0.002)
+            ) * step(i_range, 0.0);
           } else if (dice.x < 0.75) {
             // dashed box
             dice.yz = exp(-3.0 * dice.yz);
