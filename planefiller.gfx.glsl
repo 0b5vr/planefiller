@@ -26,13 +26,18 @@ const float FAR = 44.0;
 
 const float PI = acos(-1.0);
 const float TAU = PI + PI;
+const float SQRT2 = sqrt(2.0);
 const float SQRT3 = sqrt(3.0);
 const float SQRT3_OVER_TWO = SQRT3 / 2.0;
 
-const float i_BPS = 2.25;
+const float i_B2T = 0.43;
+const float i_SWING = 0.62;
 const int i_SAMPLES = 20;
 const float i_SAMPLES_F = 20.0;
 const int i_REFLECTS = 3;
+
+const float i_GAP = 0.01;
+const float i_GREEBLES_HEIGHT = 0.02;
 
 // == macros =======================================================================================
 #define saturate(x) clamp(x, 0.0, 1.0)
@@ -77,7 +82,7 @@ mat3 orthBas(vec3 z) {
 // == anim utils ===================================================================================
 float ease(float t, float k) {
   float tt = fract(1.0 - t);
-  return floor(t) - (k + 1.0) * pow(tt, k) + k * pow(tt, k + 1.0);
+  return floor(t) + float(tt > 0.0) - (k + 1.0) * pow(tt, k) + k * pow(tt, k + 1.0);
 }
 
 // == 2d sdfs ======================================================================================
@@ -166,18 +171,34 @@ vec4 isectIBox(vec3 ro, vec3 rd, vec3 s) {
 
 // == main =========================================================================================
 void main() {
+  float i_TENKAI_HELLO_RGB_DELAY = 32.0 + 0.5 * i_SWING;
+  const float i_TENKAI_HELLO_HUGE_STUFF = 64.0;
+  const float i_TENKAI_FLOOR_BEAT = 64.0;
+  const float i_TENKAI_HELLO_GRID = 96.0;
+  const float i_TENKAI_HELLO_LARGE_PILLAR = 96.0;
+  const float i_TENKAI_RGB_DELAY_4FLOOR = 96.0;
+  const float i_TENKAI_BREAK = 192.0;
+  const float i_TENKAI_HELLO_RAINBOW_BAR = 224.0;
+  const float i_TENKAI_HELLO_LASER = 224.0;
+  const float i_TENKAI_FULLHOUSE = 224.0;
+  const float i_TENKAI_TRANS = i_TENKAI_FULLHOUSE + 64.0;
+  const float i_TENKAI_OUTRO = i_TENKAI_TRANS + 64.0;
+  const float i_TENKAI_FADEOUT0 = i_TENKAI_OUTRO + 16.0;
+  const float i_TENKAI_FADEOUT1 = i_TENKAI_FADEOUT0 + 16.0;
+
   outColor *= 0.0;
 
   vec2 uv = gl_FragCoord.xy / resolution.xy;
 
-  float time = globalTime;
+  float time = globalTime + 0.0 / i_B2T;
   vec3 seed = hash3f(vec3(uv, time));
-  float beat = time * i_BPS;
-  float beatpulse = 0.2 + 0.8 * pow(0.5 - 0.5 * cos(TAU * ease(beat, 7.0)), 0.3);
-  float beatpulse2 = exp(-5.0 * fract(beat));
+  time += 0.01 * seed.z;
+  float beats = time / i_B2T;
+  float beatpulse = 0.2 + 0.8 * pow(0.5 - 0.5 * cos(TAU * ease(beats, 7.0)), 0.3);
+  float beatpulse2 = exp(-5.0 * fract(beats));
 
   for (int i = 0; i ++ < i_SAMPLES;) {
-    vec2 p = (uv - 0.5) + (seed = hash3f(seed)).xy / resolution.y;
+    vec2 p = (uv - 0.5) + seed.xy / resolution.y;
     p.x *= resolution.x / resolution.y;
 
     vec3 colRem = vec3(0.4, 0.2, 1.0);
@@ -185,30 +206,32 @@ void main() {
     mat3 cb = orthBas(colRem);
     vec3 ro = 10.0 * cb[2];
     vec3 rd = cb * normalize(vec3(p, -10.0));
+
     vec3 fp = ro + rd * 9.0;
-    ro += cb * vec3(0.01 * uniformSphere((seed = hash3f(seed)).xy).xy, 0.0);
-    ro += rd * mix(5.0, 6.0, seed.x);
+    ro += cb * vec3(0.01 * tan(2.0 * (seed = hash3f(seed)).xy - 1.0).xy, 0.0);
     rd = normalize(fp - ro);
+    ro += rd * mix(5.0, 6.0, seed.z);
+
+    float i_blur = exp(-0.2 * beats) + 0.04 * smoothstep(i_TENKAI_FADEOUT0, i_TENKAI_FADEOUT1, beats);
+    ro += cb * vec3(i_blur * tan(2.0 * seed.xy - 1.0).xy, 0.0);
+
     ro.z -= 0.4 * time;
 
     colRem *= (1.0 - 0.5 * length(p)) / colRem;
 
-    const float i_PLANE_INTERVAL = 0.5;
+    const float i_PLANE_INTERVAL = 0.25;
 
     for (int i = 0; i ++ < i_REFLECTS;) {
       vec3 emissive = vec3(0.0);
       float roughness = 0.3;
-      float mask = 0.0;
 
       // floor
-      vec4 isect = vec4(0.0, 1.0, 0.0, -ro.y / rd.y);
+      vec4 isect2, isect = vec4(0.0, 1.0, 0.0, -ro.y / rd.y);
       if (isect.w < 0.0) {
         isect = vec4(FAR);
       }
 
       // floor greebles quadtree shit
-      const float i_GAP = 0.01;
-      const float i_GREEBLES_HEIGHT = 0.01;
       float grl = max(0.0, -(ro.y - i_GREEBLES_HEIGHT) / rd.y);
 
       for (int i = 0; i ++ < 8;) {
@@ -226,10 +249,10 @@ void main() {
         vec3 cell, dice, size = vec3(0.125, i_GREEBLES_HEIGHT, 0.125);
         for (int i = 0; i ++ < 4;) {
           if (i > 1) {
-            if (dice.x < 0.1) {
+            if (dice.y < 0.4) {
               break;
             }
-            size.xz /= 1.0 + vec2(step(0.7, dice.y), step(dice.y, 0.4));
+            size.xz /= 1.0 + vec2(step(0.6, dice.y), step(dice.y, 0.7));
           }
 
           cell = lofi(gro, 2.0 * size) + size;
@@ -237,11 +260,12 @@ void main() {
           dice = hash3f(cell);
         }
 
-        vec3 i_size = size - vec2((1.0 - beatpulse) * dice.z * i_GREEBLES_HEIGHT, i_GAP).yxy;
-        vec4 isect2 = isectBox(ro - cell, rd, i_size);
+        vec3 i_size = size - vec2(mix(1.0, 1.0 - beatpulse, step(i_TENKAI_FLOOR_BEAT, beats)) * (0.4 + 0.4 * sin(TAU * dice.z + time)) * i_GREEBLES_HEIGHT, i_GAP).yxy;
+        isect2 = isectBox(ro - cell, rd, i_size);
         if (isect2.w < isect.w) {
           isect = isect2;
           dice = hash3f(dice);
+          emissive *= 0.0;
           roughness = exp(-1.0 - dice.y);
           break;
         }
@@ -251,11 +275,12 @@ void main() {
       }
 
       // plane array
-      float side = sign(rd.z);
-      float planez = (floor(ro.z / i_PLANE_INTERVAL) + 0.5 * (1.0 + side)) * i_PLANE_INTERVAL;
+      float mask = 0.0;
+      float sidez = sign(rd.z);
+      float planez = (floor(ro.z / i_PLANE_INTERVAL) + 0.5 * (1.0 + sidez)) * i_PLANE_INTERVAL;
 
       for (int i = 0; i ++ < 32;) {
-        vec4 isect2 = vec4(0.0, 0.0, -side, abs((ro.z - planez) / (rd.z)));
+        isect2 = vec4(0.0, 0.0, -sidez, abs((ro.z - planez) / rd.z));
 
         // if the plane is already further than existing isect, break
         if (isect.w < isect2.w) {
@@ -268,96 +293,186 @@ void main() {
         vec3 id = vec3(planez + vec3(1, 2, 3));
         vec3 dice = hash3f(id);
 
-        float kind = fract(1.52 * planez);
-        if (kind < 0.1) {
+        float kind = floor(mod(planez / i_PLANE_INTERVAL, 8.0));
+        if (kind == 0) {
           // rainbow bar
-          if (abs(rp.y - 0.02) < 0.01) {
+          rp.y = abs(rp.y - 0.02);
+          if (rp.y < 0.01 * ease(saturate(beats - i_TENKAI_HELLO_RAINBOW_BAR), 5.0)) {
             mask = 1.0;
             float i_phase = TAU * dice.z + rp.x;
-            vec3 i_rainbow = 1.0 + cos(i_phase + vec3(0, 2, 4));
-            emissive += 10.0 * mask * i_rainbow * beatpulse;
+            vec3 i_col = mix(
+              1.0 + cos(i_phase + vec3(0, 2, 4)),
+              vec3(smoothstep(2.0, 0.0, abs(rp.x)), 0.1, 1.0),
+              ease(saturate(beats - i_TENKAI_TRANS), 3.0)
+            );
+            emissive += 10.0
+              * exp(-40.0 * rp.y)
+              * mix(1.0, sin(200.0 * rp.x), 0.2)
+              * mix(1.0, sin(40.0 * (rp.x + beats)), 0.2)
+              * mask
+              * i_col
+              * beatpulse;
           }
-        } else if (kind < 0.2) {
+        } else if (kind == 4) {
           // large pillar
-          mask = step(abs(abs(rp.x) - 0.5), 0.05);
-          emissive += vec3(5.0, 8.0, 10.0) * mask * beatpulse;
-        } else if (kind < 0.3) {
+          float i_ratio = ease(saturate(beats - i_TENKAI_HELLO_LARGE_PILLAR), 3.0);
+          mask = step(abs(abs(rp.x) - 0.5), 0.05 * i_ratio);
+          vec3 i_col = exp(-rp.y) * mix(
+            vec3(4.0, 6.0, 8.0),
+            vec3(9.0 * exp(-4.0 * rp.y), 0.5, 8.0),
+            ease(saturate(beats - i_TENKAI_TRANS), 3.0)
+          );
+          emissive += i_col * mask * beatpulse;
+        } else if (kind == 2) {
           // rave laser
           rp.y += 0.01;
-          float t = dice.y + floor(beat);
+          float t = dice.y + floor(beats);
           float d = min(
             max(abs(mod((rp.xy * rotate2D(t)).x, 0.04) - 0.02), 0.0),
             max(abs(mod((rp.xy * rotate2D(-t)).x, 0.04) - 0.02), 0.0)
           );
-          emissive += smoothstep(2.0, 0.0, abs(rp.x)) * exp(-4.0 * rp.y) * beatpulse2 * step(d, 0.001) * vec3(0.1, 10.0, 2.0);
-        } else if (kind < 0.5) {
-          // huge stuff
-          dice = hash3f(dice + floor(beat));
-          rp.x += floor(17.0 * dice.y - 8.0) * 0.25;
+          vec3 i_col = mix(
+            vec3(0.1, 10.0, 2.0),
+            vec3(10.0, 0.1, 0.1),
+            ease(saturate(beats - i_TENKAI_TRANS), 3.0)
+          );
+          emissive += step(i_TENKAI_HELLO_LASER, beats) * smoothstep(2.0, 0.0, abs(rp.x)) * exp(-4.0 * rp.y) * beatpulse2 * step(d, 0.001) * i_col;
+        } else if (kind == 6) {
+          if (i_TENKAI_HELLO_HUGE_STUFF <= beats && beats < i_TENKAI_BREAK || i_TENKAI_FULLHOUSE <= beats && beats < i_TENKAI_OUTRO) {
+            // huge stuff
+            dice = hash3f(dice + floor(beats));
+            rp.x += floor(17.0 * dice.y - 8.0) * 0.25;
 
-          if (dice.x < 0.25) {
-            // pillars
-            mask = step(abs(rp.x), 0.125) * step(abs(fract(64.0 * rp.x) - 0.5), 0.05);
-          } else if (dice.x < 0.5) {
-            // x
-            rp.y -= 0.25;
-            float i_range = max(abs(rp.x) - 0.25, abs(rp.y) - 0.25);
-            mask = max(
-              step(abs(rp.x + rp.y), 0.002),
-              step(abs(rp.x - rp.y), 0.002)
-            ) * step(i_range, 0.0);
-          } else if (dice.x < 0.75) {
-            // dashed box
-            dice.yz = exp(-3.0 * dice.yz);
-            rp.y -= dice.z;
-            float d = max(abs(rp.x) - dice.y, abs(rp.y) - dice.z);
-            float shape = step(abs(d), 0.001) * step(0.5, fract(dot(rp, vec3(32.0)) + time));
-            mask = shape;
-          } else {
-            // huge circle
-            rp.y -= 0.5;
-            mask = step(abs(length(rp.xy) - 0.5), 0.001);
+            if (dice.x < 0.25) {
+              // pillars
+              mask = step(abs(rp.x), 0.125) * step(abs(fract(64.0 * rp.x) - 0.5), 0.05);
+            } else if (dice.x < 0.5) {
+              // x
+              rp.y -= 0.25;
+              float i_range = max(abs(rp.x) - 0.25, abs(rp.y) - 0.25);
+              mask = max(
+                step(abs(rp.x + rp.y), 0.002),
+                step(abs(rp.x - rp.y), 0.002)
+              ) * step(i_range, 0.0);
+            } else if (dice.x < 0.75) {
+              // dashed box
+              dice.yz = exp(-3.0 * dice.yz);
+              rp.y -= dice.z;
+              float d = max(abs(rp.x) - dice.y, abs(rp.y) - dice.z);
+              float shape = step(abs(d), 0.001) * step(0.5, fract(dot(rp, vec3(32.0)) + time));
+              mask = shape;
+            } else {
+              // huge circle
+              rp.y -= 0.5;
+              mask = step(abs(length(rp.xy) - 0.5), 0.001);
+            }
+
+            emissive += 10.0 * beatpulse2 * mask;
+            mask = 0.0;
           }
-
-          emissive += 10.0 * beatpulse2 * mask;
-        } else if (abs(rp.x) < 1.0) {
+        } else if (abs(rp.x) < 1.0 && i_TENKAI_HELLO_RGB_DELAY <= beats) {
           // rgb delay shit
           float size = 0.25;
           dice = hash3f(vec3(floor(rp.xy / size), dice.z));
-          size /= 1.0 + step(0.5, dice.z);
+          size /= 1.0 + step(0.3, dice.z);
           dice = hash3f(vec3(floor(rp.xy / size), dice.z));
           size /= 1.0 + step(0.5, dice.z);
           dice = hash3f(vec3(floor(rp.xy / size), dice.z));
           vec2 cp = rp.xy / size;
 
-          if (abs(cp.y - 0.5) < 0.5 && dice.y < 0.5) {
+          if (abs(cp.y - 0.5) < 0.5) {
             cp = (fract(cp.xy) - 0.5) * size / (size - 0.01);
 
             if (abs(cp.x) < 0.5 && abs(cp.y) < 0.5) {
               float off = (seed = hash3f(seed)).y;
-              vec3 col = 6.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * off - vec3(0.0, 0.25, 0.5))));
+              vec3 col = 4.0 * 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * off - vec3(0.0, 0.25, 0.5))));
 
-              float timegroup = floor(4.0 * dice.y);
-              float phase = beat / 2.0 - 0.2 * off - timegroup / 2.0;
+              float timegroup = floor(4.0 * dice.x);
+
+              if (beats < i_TENKAI_RGB_DELAY_4FLOOR) {
+                // b2sSwing
+                float st = 4.0 * beats;
+                st = 2.0 * floor(st / 2.0) + step(i_SWING, fract(0.5 * st));
+
+                st = clamp(st, 4.0 * i_TENKAI_HELLO_RGB_DELAY + 10.0, 4.0 * i_TENKAI_RGB_DELAY_4FLOOR - 16.0);
+                st += floor(st / 32.0);
+                st -= 1.0 + 3.0 * timegroup;
+                st = lofi(st, 12.0);
+                st += 1.0 + 3.0 * timegroup;
+                st -= floor(st / 32.0);
+
+                float i_bst = 0.5 * (floor(st / 2.0) + i_SWING * mod(st, 2.0));
+                float t = beats - i_bst;
+
+                col *= vec3(1.0, 0.04, 0.04) * step(0.0, t) * exp(-4.0 * t);
+              } else if (beats < i_TENKAI_BREAK) {
+                float b = beats;
+
+                b = clamp(b, i_TENKAI_RGB_DELAY_4FLOOR + 3.0, i_TENKAI_FULLHOUSE);
+                b -= timegroup;
+                b = lofi(b, 4.0);
+                b += timegroup;
+
+                float t = beats - b;
+
+                col *= step(0.0, t) * exp(-2.0 * t) * smoothstep(0.0, -1.0, beats - i_TENKAI_BREAK);
+              } else {
+                float thr = pow(fract(dice.x * 999.0), 0.5);
+
+                col *= smoothstep(0.0, 4.0, beats - i_TENKAI_BREAK - 32.0 * thr) * mix(vec3(1.0), vec3(1.0, 0.05, 0.12), ease(saturate(beats - i_TENKAI_TRANS), 3.0));
+              }
+
+              float phase = (
+                1.0
+                + max(beats - 0.3 * off - timegroup + 0.3 - i_TENKAI_BREAK, 0.0) / 4.0
+                + max(beats - 0.3 * off - timegroup + 0.3 - i_TENKAI_FULLHOUSE, 0.0) / 4.0
+              );
+
               float ephase = ease(phase, 6.0);
               float ephase0 = min(mod(ephase, 2.0), 1.0);
               float ephase1 = max(mod(ephase, 2.0) - 1.0, 0.0);
 
-              if (dice.z < 0.2) {
+              dice.z *= 24;
+
+              if (dice.z < 1) {
+                // ,',
+                cp *= rotate2D(3.0 * PI * ephase);
+                float theta = lofi(atan(cp.x, cp.y), TAU / 3.0) + PI / 3.0;
+                cp = (cp * rotate2D(theta) - vec2(0.0, 0.3));
+                float shape = step(length(cp), 0.1);
+                emissive += col * shape;
+              } else if (dice.z < 2) {
                 // circle
                 emissive += col * step(0.5 * ephase0 - 0.2, length(cp)) * step(length(cp), 0.5 * ephase0) * step(1.1 * ephase1, fract(atan(cp.y, cp.x) / TAU - ephase1 - 2.0 * TAU * dice.y));
-              } else if (dice.z < 0.4) {
+              } else if (dice.z < 3) {
+                // slide
+                cp.x *= sign(dice.y - 0.5);
+                cp *= rotate2D(PI / 4.0);
+                cp.x += 2.0 * sign(cp.y) * (1.0 - ephase0);
+                cp = abs(cp);
+                float shape = step(0.03 + ephase1, cp.y) * step(max(cp.x, cp.y), 0.65) * step(cp.x + cp.y, 1.0 / SQRT2);
+                emissive += col * shape;
+              } else if (dice.z < 4) {
                 // dot matrix
-                float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5) * step(length(fract(8.0 * cp) - 0.5), 0.3);
-                cp = floor(8.0 * cp);
+                float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5);
+                cp *= 6.0;
+                shape *= step(length(fract(cp) - 0.5), 0.3);
+                cp = floor(cp);
                 float i_rand = floor(12.0 * min(fract(phase), 0.5));
                 emissive += col * shape * step(
                   hash3f(vec3(cp, dice.y + i_rand)).x,
                   0.3 - 0.3 * cos(PI * ephase)
                 );
-              } else if (dice.z < 0.6) {
+              } else if (dice.z < 5) {
+                // target
+                cp = abs(cp);
+                float i_shape = max(
+                  step(abs(max(cp.x, cp.y) - 0.48), 0.02) * step(0.8 - 0.6 * ephase0, min(cp.x, cp.y)),
+                  step(max(cp.x, cp.y), 0.15 * ephase0) * step(abs(min(cp.x, cp.y)), 0.02)
+                ) * step(fract(3.0 * max(ephase1, 0.5)), 0.5);
+                emissive += col * i_shape;
+              } else if (dice.z < 6) {
                 // hex
-                cp.y += 0.05;
                 cp *= rotate2D(TAU * lofi(dice.y - ephase, 1.0 / 6.0));
                 float cell = floor(atan(cp.x, cp.y) / TAU * 6.0 + 0.5);
                 cp *= rotate2D(cell / 6.0 * TAU);
@@ -367,7 +482,7 @@ void main() {
                   * step(cp.y, 0.44)
                 ) * step(mod(cell, 3.0), 1.0 - 1.1 * cos(PI * ephase));
                 emissive += col * i_shape;
-              } else if (dice.z < 0.8) {
+              } else if (dice.z < 7) {
                 // blink rect
                 cp = floor(5.0 * cp + 0.5);
                 float i_rand = floor(16.0 * phase);
@@ -376,47 +491,90 @@ void main() {
                   0.5 - 0.5 * cos(PI * ephase)
                 );
                 emissive += col * i_shape;
-              } else if (dice.z < 0.9) {
+              } else if (dice.z < 8) {
                 // char
                 float i_rand = floor(30.0 * min(fract(phase), 0.2)) + floor(phase);
                 int i_char = int(64.0 * hash3f(dice + i_rand).x);
-                float i_d = sddomainchar(10.0 * cp, i_char);
+                float i_d = sddomainchar(8.0 * cp, i_char);
                 emissive += col * step(i_d, 0.2);
-              } else {
+              } else if (dice.z < 12) {
                 // arrow
-                cp /= ephase0;
+                cp /= 0.001 + ephase0;
 
                 float blink = floor(min(8.0 * ephase1, 3.0));
 
-                vec2 cpt = vec2(
-                  abs(cp.x),
-                  0.8 - fract(cp.y + 0.5 - 2.0 * ephase0)
-                );
-                float d = min(
-                  sdcapsule2(cpt, vec2(0.0, 0.6)),
-                  sdcapsule2(cpt, vec2(0.3, 0.3))
-                ) - 0.07;
+                float dout, din = 1.0;
 
-                if (blink < 2.0) {
+                if (dice.z < 9) {
+                  // arrow
+                  vec2 cpt = vec2(
+                    abs(cp.x),
+                    0.8 - fract(cp.y + 0.5 - 2.0 * ephase0)
+                  );
+
+                  din = min(
+                    sdcapsule2(cpt, vec2(0.0, 0.6)),
+                    sdcapsule2(cpt, vec2(0.3, 0.3))
+                  ) - 0.07;
+
                   cpt = cp;
                   cpt -= clamp(cpt, -0.4, 0.4);
-                  d = max(-d, length(cpt) - 0.08);
+                  dout = length(cpt) - 0.05;
+                } else if (dice.z < 10) {
+                  // error
+                  dout = length(cp) - 0.45;
+
+                  cp *= rotate2D(PI * ephase0 + PI / 4.0);
+                  cp = abs(cp);
+
+                  din = max(
+                    max(cp.x, cp.y) - 0.25,
+                    min(cp.x, cp.y) - 0.07
+                  );
+                } else if (dice.z < 11) {
+                  // warning
+                  cp.x = abs(cp.x);
+                  din = max(
+                    cp.x - 0.07,
+                    min(
+                      abs(cp.y) - 0.15,
+                      abs(cp.y + 0.27) - 0.05
+                    )
+                  ) + step(fract(3.9 * ephase0), 0.5);
+
+                  dout = mix(
+                    min(
+                      sdcapsule2(cp - vec2(0.0, 0.35), vec2(0.4, -0.7)),
+                      sdcapsule2(cp + vec2(0.0, 0.35), vec2(0.4, 0.0))
+                    ),
+                    0.0,
+                    step(dot(cp, vec2(0.7, 0.4)), 0.11) * step(-0.4, cp.y) // cringe
+                  ) - 0.05;
+                } else {
+                  // power
+                  dout = 0.3 * ephase0 * ephase0;
+                  dout = sdcapsule2(cp - vec2(0.0, 0.1), vec2(0.0, dout)) - 0.07;
+                  float i_ring = max(
+                    abs(length(cp) - 0.4) - 0.07,
+                    -dout + 0.07
+                  );
+                  dout = min(dout, i_ring);
                 }
 
-                float shape = mix(
+                float i_shape = mix(
                   mix(
-                    step(d, 0.0),
-                    step(abs(d), 0.01),
+                    step(max(dout, -din), 0.0),
+                    step(abs(max(dout, -din)), 0.01),
                     saturate(blink)
                   ),
                   mix(
-                    step(d, 0.0),
+                    step(din, 0.0),
                     0.0,
                     saturate(blink - 2.0)
                   ),
                   saturate(blink - 1.0)
                 );
-                emissive += col * shape;
+                emissive += col * i_shape;
               }
             }
           }
@@ -424,7 +582,7 @@ void main() {
 
         // if the mask test misses, traverse the next plane
         if (mask == 0.0) {
-          planez += i_PLANE_INTERVAL * side;
+          planez += i_PLANE_INTERVAL * sidez;
           continue;
         }
 
@@ -444,6 +602,8 @@ void main() {
 
       // the ray missed all of the above, you suck
       if (isect.w >= FAR) {
+        float i_intro = smoothstep(0.0, 32.0, beats) * (0.01 + smoothstep(32.0, 31.5, beats));
+        outColor.xyz += colRem * i_intro;
         break;
       }
 
@@ -505,11 +665,11 @@ void main() {
 
   outColor.xyz = mix(
     smoothstep(
-      vec3(0.0, -0.1, -0.2),
+      vec3(-0.0, -0.1, -0.2),
       vec3(1.0, 1.1, 1.2),
       sqrt(outColor.xyz / i_SAMPLES_F)
     ),
     max(texture(backBuffer0, uv), 0.0).xyz,
-    0.0
-  );
+    0.5
+  ) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
 }
