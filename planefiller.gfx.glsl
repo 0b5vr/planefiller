@@ -1,4 +1,4 @@
-﻿#version 430
+#version 430
 
 layout(binding = 0) uniform sampler2D backBuffer0;
 layout(location = 0) uniform int waveOutPosition;
@@ -120,6 +120,10 @@ float sddomainchar(vec2 p, int code) {
   const ivec4 chars[] = ivec4[](ivec4(0,2,4,8),ivec4(10,13,14,15),ivec4(16,17,20,22),ivec4(23,24,25,26),ivec4(28,30,31,33),ivec4(35,37,38,39),ivec4(40,41,43,45),ivec4(46,48,49,51),ivec4(52,54,56,57),ivec4(59,62,65,66),ivec4(69,70,71,74),ivec4(75,77,78,79),ivec4(80,82,84,85),ivec4(87,88,89,91),ivec4(93,95,96,97),ivec4(98,99,100,101));
 
   float d = 100.0;
+
+  if (abs(p.x - 5.0) > 5.0 && abs(p.y) > 7.0) {
+    return d;
+  }
 
   int seg0 = chars[code / 4][code % 4];
   code ++;
