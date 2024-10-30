@@ -86,9 +86,9 @@ vec2 shotgun( float t, float spread ) {
 
 mat3 orthBas(vec3 z) {
   z = normalize(z);
-  vec3 x = normalize(cross(vec3(0, 1, 0), z));
-  vec3 y = cross(z, x);
-  return mat3(x, y, z);
+  vec3 up = abs(z.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+  vec3 x = normalize(cross(up, z));
+  return mat3(x, cross(z, x), z);
 }
 
 vec3 cyclic(vec3 p, float pers, float lacu) {
@@ -345,7 +345,7 @@ void main() {
     } else { // env
       env *= mix(
         smoothstep(0.6 * l, 0.4 * l, t - 0.4 * l * step(i_TENKAI_FULLHOUSE, beats)),
-        exp2(-t),
+        exp2(-5.0 * t),
         0.1
       );
     }

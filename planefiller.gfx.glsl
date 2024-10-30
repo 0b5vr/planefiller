@@ -32,8 +32,8 @@ const float SQRT3_OVER_TWO = SQRT3 / 2.0;
 
 const float i_B2T = 0.43;
 const float i_SWING = 0.62;
-const int i_SAMPLES = 20;
-const float i_SAMPLES_F = 20.0;
+const int i_SAMPLES = 16;
+const float i_SAMPLES_F = 16.0;
 const int i_REFLECTS = 3;
 
 const float i_GAP = 0.01;
@@ -79,6 +79,22 @@ mat3 orthBas(vec3 z) {
   return mat3(x, cross(z, x), z);
 }
 
+// == noise ========================================================================================
+vec3 cyclic(vec3 p, float pers, float lacu) {
+  vec4 sum = vec4(0);
+  mat3 rot = orthBas(vec3(2, -3, 1));
+
+  for (int i = 0; i ++ < 5;) {
+    p *= rot;
+    p += sin(p.zxy);
+    sum += vec4(cross(cos(p), sin(p.yzx)), 1);
+    sum /= pers;
+    p *= lacu;
+  }
+
+  return sum.xyz / sum.w;
+}
+
 // == anim utils ===================================================================================
 float ease(float t, float k) {
   float tt = fract(1.0 - t);
@@ -92,50 +108,57 @@ float sdcapsule2(vec2 p, vec2 tail) {
 }
 
 // == text =========================================================================================
-vec2 domaingrid(vec2 v) {
-  return v + vec2(-0.5, 0.5) * (step(2.0, v) + step(5.0, v)) - vec2(2.5, 3.5);
-}
-
-float sddomainseg(vec2 p, vec2 a, vec2 b) {
-  a = domaingrid(a);
-  b = domaingrid(b);
+float sddomainsegment(vec2 p, vec2 a, vec2 b) {
+  a = 1.5 * a + vec2(-0.5, 1.5) * (step(2.0, a) + step(5.0, a)) - vec2(0.0, 6.0);
+  b = 1.5 * b + vec2(-0.5, 1.5) * (step(2.0, b) + step(5.0, b)) - vec2(0.0, 6.0);
   return sdcapsule2(p - a, b - a);
 }
 
-float sddoamina(vec2 p) {
-  float d = sddomainseg(p, vec2(0, 0), vec2(0, 3));
-  d = min(d, sddomainseg(p, vec2(0, 3), vec2(2, 6)));
-  d = min(d, sddomainseg(p, vec2(2, 6), vec2(4, 6)));
-  d = min(d, sddomainseg(p, vec2(4, 6), vec2(6, 3)));
-  d = min(d, sddomainseg(p, vec2(6, 3), vec2(6, 0)));
-  d = min(d, sddomainseg(p, vec2(0, 2), vec2(6, 2)));
-  return d;
-}
+float sddomainchar(vec2 p, int code) {
+  const ivec4 vertices[] = ivec4[](ivec4(0x016121110,0x016153635,0x005650161,0x016105650),ivec4(0x065561605,0x004135362,0x061501001,0x036300626),ivec4(0x024040642,0x062604042,0x066650100,0x063534241),ivec4(0x030100102,0x013334445,0x036160504,0x013334241),ivec4(0x050601615,0x036252130,0x006151100,0x036326503),ivec4(0x005633531,0x003631100,0x003431110,0x066650100),ivec4(0x010506165,0x056160501,0x010650116,0x026353010),ivec4(0x050051656,0x065645313,0x002006005,0x016566564),ivec4(0x053335362,0x061501001,0x006041363,0x066600666),ivec4(0x006045463,0x061501001,0x056160501,0x010506162),ivec4(0x053030666,0x065111056,0x016050413,0x053626150),ivec4(0x010010213,0x053646556,0x063130405,0x016566561),ivec4(0x050100114,0x013111014,0x013110065,0x003610464),ivec4(0x001610563,0x001051656,0x065645333,0x032313036),ivec4(0x033425263,0x065561605,0x001105000,0x003264663),ivec4(0x060026200,0x006566564,0x053035362,0x061500065),ivec4(0x056160501,0x010506106,0x000065665,0x061500006),ivec4(0x066036306,0x000600666,0x003530600,0x065561605),ivec4(0x001105061,0x063430600,0x003636660,0x016106661),ivec4(0x050100102,0x006006665,0x043034361,0x060060060),ivec4(0x000063332,0x033666000,0x006606610,0x050616556),ivec4(0x016050110,0x000065665,0x064530310,0x050616556),ivec4(0x016050110,0x042610006,0x056656453,0x003536260),ivec4(0x065561605,0x004135362,0x061501001,0x006663630),ivec4(0x006011050,0x061660603,0x020406366,0x006003334),ivec4(0x033606606,0x005616066,0x065010006,0x005336665),ivec4(0x033300666,0x065010060,0x036262030,0x006056160),ivec4(0x006161000,0x014365400,0x060000000,0));
+  const ivec4 segments[] = ivec4[](ivec4(0,2,4,6),ivec4(8,10,12,14),ivec4(16,28,30,35),ivec4(40,44,66,68),ivec4(72,76,78,80),ivec4(82,84,86,88),ivec4(90,92,96,105),ivec4(107,111,113,123),ivec4(130,136,140,142),ivec4(144,152,162,167),ivec4(184,195,197,199),ivec4(201,203,206,208),ivec4(210,213,221,223),ivec4(235,241,243,250),ivec4(255,263,265,271),ivec4(273,275,278,280),ivec4(282,284,294,296),ivec4(298,300,302,308),ivec4(310,314,317,320),ivec4(324,327,331,340),ivec4(347,356,358,365),ivec4(368,380,382,384),ivec4(390,396,400,403),ivec4(407,411,414,418),ivec4(424,428,432,436),ivec4(439,441,0,0));
+  const ivec4 chars[] = ivec4[](ivec4(0,2,4,8),ivec4(10,13,14,15),ivec4(16,17,20,22),ivec4(23,24,25,26),ivec4(28,30,31,33),ivec4(35,37,38,39),ivec4(40,41,43,45),ivec4(46,48,49,51),ivec4(52,54,56,57),ivec4(59,62,65,66),ivec4(69,70,71,74),ivec4(75,77,78,79),ivec4(80,82,84,85),ivec4(87,88,89,91),ivec4(93,95,96,97),ivec4(98,99,100,101));
 
-float sddomainchar(vec2 p, int c) {
-  const int VERTICES[] = int[](16,12,11,10,16,15,36,35,05,65,01,61,16,10,56,50,65,56,16,05,04,13,53,62,61,50,10,01,36,30,06,26,24,04,06,42,62,60,40,42,66,65,01,00,63,53,42,41,30,10,01,02,13,33,44,45,36,16,05,04,13,33,42,41,50,60,16,15,36,25,21,30,06,15,11,00,36,32,65,03,05,63,35,31,03,63,11,00,03,43,11,10,66,65,01,00,10,50,61,65,56,16,05,01,10,65,01,16,26,35,30,10,50,05,16,56,65,64,53,13,02,00,60,05,16,56,65,64,53,33,53,62,61,50,10,01,06,04,13,63,66,60,06,66,06,04,54,63,61,50,10,01,56,16,05,01,10,50,61,62,53,03,06,66,65,11,10,56,16,05,04,13,53,62,61,50,10,01,02,13,53,64,65,56,63,13,04,05,16,56,65,61,50,10,01,14,13,11,10,14,13,11,00,65,03,61,04,64,01,61,05,63,01,05,16,56,65,64,53,33,32,31,30,36,33,42,52,63,65,56,16,05,01,10,50,00,03,26,46,63,60,02,62,00,06,56,65,64,53,03,53,62,61,50,00,65,56,16,05,01,10,50,61,06,00,06,56,65,61,50,00,06,66,03,63,06,00,60,06,66,03,53,06,00,65,56,16,05,01,10,50,61,63,43,06,00,03,63,66,60,16,10,66,61,50,10,01,02,06,00,66,65,43,03,43,61,60,06,00,60,00,06,33,32,33,66,60,00,06,60,66,10,50,61,65,56,16,05,01,10,00,06,56,65,64,53,03,10,50,61,65,56,16,05,01,10,42,61,00,06,56,65,64,53,03,53,62,60,65,56,16,05,04,13,53,62,61,50,10,01,06,66,36,30,06,01,10,50,61,66,06,03,20,40,63,66,06,00,33,34,33,60,66,06,05,61,60,66,65,01,00,06,05,33,66,65,33,30,06,66,65,01,00,60,36,26,20,30,06,05,61,60,06,16,10,00,14,36,54,00,60,06,15);
-  const int SEGMENTS[] = int[](0,2,4,6,8,10,12,14,16,28,30,35,40,44,66,68,72,76,78,80,82,84,86,88,90,92,96,105,107,111,113,123,130,136,140,142,144,152,162,167,184,195,197,199,201,203,206,208,210,213,221,223,235,241,243,250,255,263,265,271,273,275,278,280,282,284,294,296,298,300,302,308,310,314,317,320,324,327,331,340,347,356,358,365,368,380,382,384,390,396,400,403,407,411,414,418,424,428,432,436,439,441,443);
-  const int CHARS[] = int[](0,2,4,8,10,13,14,15,16,17,20,22,23,24,25,26,28,30,31,33,35,37,38,39,40,41,43,45,46,48,49,51,52,54,56,57,59,62,65,66,69,70,71,74,75,77,78,79,80,82,84,85,87,88,89,91,93,95,96,97,98,99,100,101,102);
+  float d = 100.0;
 
-  float d = 1.0;
+  int seg0 = chars[code / 4][code % 4];
+  code ++;
+  int seg1 = chars[code / 4][code % 4];
 
-  if (abs(p.x) > 3.0 || abs(p.y) > 4.0) {
-    return 1.0;
-  }
+  for (int i = seg0; i < seg1;) {
+    int vert0 = segments[i / 4][i % 4];
+    i ++;
+    int vert1 = segments[i / 4][i % 4] - 1;
 
-  int i_char = CHARS[c];
-  for (int i = CHARS[c]; i < CHARS[c + 1]; i ++) {
-    int seg0 = SEGMENTS[i];
-    int seg1 = SEGMENTS[i + 1] - 1;
+    for (int j = vert0; j < vert1;) {
+      int v0 = (vertices[j / 16][j / 4 % 4] >> (8 * (3 - j % 4))) & 255;
+      j ++;
+      int v1 = (vertices[j / 16][j / 4 % 4] >> (8 * (3 - j % 4))) & 255;
 
-    for (int i = seg0; i < seg1; i ++) {
-      int v0 = VERTICES[i];
-      int v1 = VERTICES[i + 1];
-
-      d = min(d, sddomainseg(p, vec2(v0 / 10, v0 % 10), vec2(v1 / 10, v1 % 10)));
+      d = min(d, sddomainsegment(
+        p,
+        vec2(v0 >> 4, v0 & 15),
+        vec2(v1 >> 4, v1 & 15)
+      ));
     }
   }
 
+  return d;
+}
+
+float sddomainspace(int code) {
+  const ivec4 spaces[] = ivec4[](
+    ivec4(3,5,8,8),ivec4(8,8,3,4),ivec4(4,8,8,3),ivec4(5,3,8,8),
+    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,3,3,8),ivec4(8,8,8,8),
+    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(3,8,8,8),ivec4(8,8,8,8),
+    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,4,8),ivec4(4,8,8,8)
+  );
+  return float(spaces[code / 4][code % 4]);
+}
+
+float sddomaincharspace(inout vec2 p, int code, float padding) {
+  float d = sddomainchar(p, code);
+  p.x -= sddomainspace(code) + padding;
   return d;
 }
 
@@ -296,8 +319,7 @@ void main() {
         float kind = floor(mod(planez / i_PLANE_INTERVAL, 8.0));
         if (kind == 0) {
           // rainbow bar
-          rp.y = abs(rp.y - 0.02);
-          if (rp.y < 0.01 * ease(saturate(beats - i_TENKAI_HELLO_RAINBOW_BAR), 5.0)) {
+          if (abs(rp.y - 0.02) < 0.01 * ease(saturate(beats - i_TENKAI_HELLO_RAINBOW_BAR), 5.0)) {
             mask = 1.0;
             float i_phase = TAU * dice.z + rp.x;
             vec3 i_col = mix(
@@ -313,6 +335,50 @@ void main() {
               * i_col
               * beatpulse;
           }
+
+          // warning
+          rp.y -= 0.05;
+          float warningwidth = 0.025 * ease(saturate(beats - i_TENKAI_BREAK), 5.0) * smoothstep(0.0, -1.0, beats - i_TENKAI_FULLHOUSE);
+          if (abs(rp.y) < warningwidth) {
+            const int codes[] = int[](0, 54, 32, 49, 45, 40, 45, 38);
+
+            mask = 1.0;
+
+            rp.x = mod(rp.x + 0.1 * time, 0.5) - 0.25;
+            float blind = step(fract(20.0 * (rp.x + rp.y + 0.1 * time)), 0.5) * step(0.12, abs(rp.x)) * step(abs(rp.y), warningwidth - 0.008);
+
+            rp.xy *= 12.0 / warningwidth;
+            for (int i = 0; i ++ < 7;) {
+              float phase = saturate((beats - i_TENKAI_BREAK - 0.5 - 0.1 * float(i)) / 0.25);
+              if (0.0 < phase) {
+                int i_offset = int(16.0 * phase) - 16;
+                int code = (codes[i] - i_offset) % 64;
+                rp.x += 0.5 * sddomainspace(code) + 2.0;
+              }
+            }
+            rp.x -= 2.0;
+
+            float d = 100.0;
+            for (int i = 0; i ++ < 7;) {
+              float phase = saturate((beats - i_TENKAI_BREAK - 0.5 - 0.1 * float(i)) / 0.25);
+              if (0.0 < phase) {
+                int i_offset = int(16.0 * phase) - 16;
+                int code = (codes[i] - i_offset) % 64;
+                d = min(d, sddomaincharspace(rp.xy, code, 4.0) - 1.0);
+              }
+            }
+            float shape = max(
+              step(d, 0.0),
+              blind
+            );
+
+            emissive += mix(
+              vec3(1.0, 0.04, 0.04),
+              vec3(1.0),
+              shape
+            );
+
+          }
         } else if (kind == 4) {
           // large pillar
           float i_ratio = ease(saturate(beats - i_TENKAI_HELLO_LARGE_PILLAR), 3.0);
@@ -321,8 +387,12 @@ void main() {
             vec3(4.0, 6.0, 8.0),
             vec3(9.0 * exp(-4.0 * rp.y), 0.5, 8.0),
             ease(saturate(beats - i_TENKAI_TRANS), 3.0)
+          ) * mix(
+            beatpulse,
+            0.1,
+            smoothstep(0.0, 1.0, beats - i_TENKAI_BREAK - 1.0) * smoothstep(0.0, -0.5, beats - i_TENKAI_FULLHOUSE)
           );
-          emissive += i_col * mask * beatpulse;
+          emissive += i_col * mask;
         } else if (kind == 2) {
           // rave laser
           rp.y += 0.01;
@@ -404,7 +474,7 @@ void main() {
                 float i_bst = 0.5 * (floor(st / 2.0) + i_SWING * mod(st, 2.0));
                 float t = beats - i_bst;
 
-                col *= vec3(1.0, 0.04, 0.04) * step(0.0, t) * exp(-4.0 * t);
+                col *= vec3(1.0, 0.04, 0.1) * step(0.0, t) * exp(-4.0 * t);
               } else if (beats < i_TENKAI_BREAK) {
                 float b = beats;
 
@@ -415,7 +485,7 @@ void main() {
 
                 float t = beats - b;
 
-                col *= step(0.0, t) * exp(-2.0 * t) * smoothstep(0.0, -1.0, beats - i_TENKAI_BREAK);
+                col *= step(0.0, t) * exp(-2.0 * t) * smoothstep(0.0, -4.0, beats - i_TENKAI_BREAK);
               } else {
                 float thr = pow(fract(dice.x * 999.0), 0.5);
 
@@ -495,8 +565,8 @@ void main() {
                 // char
                 float i_rand = floor(30.0 * min(fract(phase), 0.2)) + floor(phase);
                 int i_char = int(64.0 * hash3f(dice + i_rand).x);
-                float i_d = sddomainchar(8.0 * cp, i_char);
-                emissive += col * step(i_d, 0.2);
+                float i_d = sddomainchar(14.0 * cp + vec2(4.0, 0.0), i_char);
+                emissive += col * step(i_d, 0.5);
               } else if (dice.z < 12) {
                 // arrow
                 cp /= 0.001 + ephase0;
@@ -602,7 +672,7 @@ void main() {
 
       // the ray missed all of the above, you suck
       if (isect.w >= FAR) {
-        float i_intro = smoothstep(0.0, 32.0, beats) * (0.01 + smoothstep(32.0, 31.5, beats));
+        float i_intro = 0.5 * smoothstep(0.0, 32.0, beats) * (0.01 + smoothstep(32.0, 31.5, beats));
         outColor.xyz += colRem * i_intro;
         break;
       }
@@ -661,6 +731,46 @@ void main() {
         break;
       }
     }
+
+    if (beats < i_TENKAI_HELLO_RGB_DELAY) {
+      float phase = (float(i - 1) + seed.x) / i_SAMPLES_F;
+      float diffuse = phase * phase * phase * phase;
+      p += (exp(-0.08 * beats) * diffuse + 0.5 * exp(-0.4 * beats) * phase) * cyclic(vec3(4.0 * p, 0.2 * time) + 5.0, 0.5, 1.4).xy;
+
+      float d = 100.0;
+
+      // planefiller
+      p = p * 120.0;
+      p.x += 1.5 + 0.5 * sddomainspace(47);
+      p.x += 1.5 + 0.5 * sddomainspace(43);
+      p.x += 1.5 + 0.5 * sddomainspace(32);
+      p.x += 1.5 + 0.5 * sddomainspace(45);
+      p.x += 1.5 + 0.5 * sddomainspace(36);
+      p.x += 1.5 + 0.5 * sddomainspace(37);
+      p.x += 1.5 + 0.5 * sddomainspace(40);
+      p.x += 1.5 + 0.5 * sddomainspace(43);
+      p.x += 1.5 + 0.5 * sddomainspace(43);
+      p.x += 1.5 + 0.5 * sddomainspace(36);
+      p.x += 1.5 + 0.5 * sddomainspace(49);
+      p.x -= 2.0;
+
+      d = min(d, sddomaincharspace(p.xy, 47, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 32, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 45, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 36, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 37, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 40, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 36, 3.0));
+      d = min(d, sddomaincharspace(p.xy, 49, 3.0));
+
+      // render
+      float shape = smoothstep(2.0 * diffuse, 0.0, d - 0.2);
+      vec3 i_col = 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * phase - vec3(0.0, 0.25, 0.5))));
+      outColor.xyz += shape * i_col * smoothstep(-1.0, -4.0, beats - i_TENKAI_HELLO_RGB_DELAY);
+    }
   }
 
   outColor.xyz = mix(
@@ -671,5 +781,5 @@ void main() {
     ),
     max(texture(backBuffer0, uv), 0.0).xyz,
     0.5
-  ) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
+  ) * smoothstep(0.0, 4.0, beats) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
 }
