@@ -1,4 +1,4 @@
-#version 430
+﻿#version 430
 
 layout(binding = 0) uniform sampler2D backBuffer0;
 layout(location = 0) uniform int waveOutPosition;
@@ -343,7 +343,7 @@ void main() {
           // warning
           rp.y -= 0.05;
           float warningwidth = 0.025 * ease(saturate(beats - i_TENKAI_BREAK), 5.0) * smoothstep(0.0, -1.0, beats - i_TENKAI_FULLHOUSE);
-          if (abs(rp.y) < warningwidth) {
+          if (abs(rp.y) < warningwidth && i_TENKAI_BREAK <= beats && beats < i_TENKAI_FULLHOUSE) {
             const int codes[] = int[](0, 54, 32, 49, 45, 40, 45, 38);
 
             mask = 1.0;
