@@ -23,7 +23,7 @@
 	"renderSettings":	{
 		"pixelFormat":	1,
 		"enableMultipleRenderTargets":	true,
-		"numEnabledRenderTargets":	4,
+		"numEnabledRenderTargets":	2,
 		"enableBackBuffer":	true,
 		"enableMipmapGeneration":	false,
 		"textureFilter":	1,
@@ -59,16 +59,16 @@
 		}
 	},
 	"recordImageSequenceSettings":	{
-		"directoryName":	"",
-		"xReso":	1280,
-		"yReso":	720,
+		"directoryName":	".\\capture",
+		"xReso":	1920,
+		"yReso":	1080,
 		"startTimeInSeconds":	0,
 		"durationInSeconds":	166,
 		"framesPerSecond":	60,
 		"replaceAlphaByOne":	true
 	},
 	"captureSoundSettings":	{
-		"fileName":	"",
+		"fileName":	".\\capture\\sound.wav",
 		"durationInSeconds":	166
 	},
 	"imGuiStatus":	{
