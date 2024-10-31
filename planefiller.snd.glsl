@@ -113,6 +113,7 @@ void main() {
   const float i_TENKAI_HELLO_KICK = i_TENKAI_HELLO_RAVE + 32.0;
   const float i_TENKAI_HELLO_BASS = i_TENKAI_HELLO_RAVE + 64.0;
   const float i_TENKAI_HELLO_HIHAT = i_TENKAI_HELLO_BASS;
+  const float i_TENKAI_HELLO_FMPERC = i_TENKAI_HELLO_BASS;
   const float i_TENKAI_HELLO_HIHAT_16TH = i_TENKAI_HELLO_BASS + 32.0;
   const float i_TENAKI_HELLO_CLAP = i_TENKAI_HELLO_BASS + 32.0;
   const float i_TENKAI_HELLO_OH = i_TENAKI_HELLO_CLAP + 32.0;
@@ -228,6 +229,19 @@ void main() {
     }
 
     dest += 0.1 * exp2(-14.0 * t) * sidechain * tanh(2.0 * sum);
+  }
+
+  if (i_TENKAI_HELLO_FMPERC <= beats && beats < i_TENKAI_OUTRO) { // fm perc
+    vec4 seq = seq16(time.y, 0xffff);
+    float t = seq.y;
+    float q = seq.w;
+    vec3 dice = hash3f(vec3(seq.x, mod(beatsbar, 32.0), 1.0));
+
+    float freq = exp2(9.0 + 2.0 * dice.x);
+    float env = exp2(-exp2(3.0 + 5.0 * dice.y) * t);
+    float fm = env * exp2(2.0 + 4.0 * dice.z) * sin(freq * exp2(-t));
+    float wave = sin(fm);
+    dest += 0.07 * mix(0.2, 1.0, sidechain) * vec2(wave) * rotate2D(seq.x);
   }
 
   if (i_TENKAI_HELLO_RIM <= beats && beats < i_TENKAI_OUTRO) { // rim
