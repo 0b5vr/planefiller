@@ -121,12 +121,10 @@ void main() {
   const float i_TENKAI_FULLHOUSE = i_TENKAI_HELLO_OH + 64.0;
   const float i_TENKAI_TRANS = i_TENKAI_FULLHOUSE + 64.0;
   const float i_TENKAI_OUTRO = i_TENKAI_TRANS + 64.0;
-  const float i_TENKAI_FADEOUT0 = i_TENKAI_OUTRO + 16.0;
-  const float i_TENKAI_FADEOUT1 = i_TENKAI_FADEOUT0 + 16.0;
+  const float i_TENKAI_FADEOUT0 = i_TENKAI_OUTRO + 8.0;
+  const float i_TENKAI_FADEOUT1 = i_TENKAI_OUTRO + 32.0;
 
   int frame = int(gl_GlobalInvocationID.x) + waveOutPosition;
-  int tempoutframe = frame;
-  // frame += int(24) * SAMPLES_PER_BEAT;
   vec4 time = vec4(frame % (SAMPLES_PER_BEAT * ivec4(1, 4, 32, 65536))) / SAMPLES_PER_SEC;
   float beats = time.w / B2T;
   float beatsbar = lofi(beats, 4.0);
@@ -398,5 +396,5 @@ void main() {
     }
   }
 
-  waveOutSamples[tempoutframe] = clamp(tanh(dest), -1.0, 1.0) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
+  waveOutSamples[frame] = clamp(tanh(dest), -1.0, 1.0) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
 }
