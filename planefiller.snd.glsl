@@ -238,10 +238,10 @@ void main() {
     vec3 dice = hash3f(vec3(seq.x, mod(beatsbar, 32.0), 1.0));
 
     float freq = exp2(9.0 + 2.0 * dice.x);
-    float env = exp2(-exp2(3.0 + 5.0 * dice.y) * t);
+    float env = exp2(-exp2(3.0 + 5.0 * dice.y) * t) * smoothstep(0.0, 0.01, q);
     float fm = env * exp2(2.0 + 4.0 * dice.z) * sin(freq * exp2(-t));
     float wave = sin(fm);
-    dest += 0.07 * mix(0.2, 1.0, sidechain) * vec2(wave) * rotate2D(seq.x);
+    dest += 0.05 * sidechain * vec2(wave) * rotate2D(seq.x);
   }
 
   if (i_TENKAI_HELLO_RIM <= beats && beats < i_TENKAI_OUTRO) { // rim
@@ -377,7 +377,8 @@ void main() {
 
         vec3 c = vec3(0.0);
         vec3 d = vec3(2.0, -3.0, -8.0);
-        vec2 wave = 1.0 * cyclic(fract(phase) * d, 0.5, 2.0).xy;
+        float k = 0.1 + 0.4 * smoothstep(0.0, i_TENKAI_HELLO_RAVE, beats);
+        vec2 wave = cyclic(fract(phase) * d, k, 2.0).xy;
 
         sum += vec2(wave) * rotate2D(fi);
       }

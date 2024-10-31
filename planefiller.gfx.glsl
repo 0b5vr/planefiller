@@ -1,6 +1,7 @@
 ﻿#version 430
 
-layout(binding = 0) uniform sampler2D backBuffer0;
+layout(binding = 0) uniform sampler2D b0;
+layout(binding = 1) uniform sampler2D b1;
 layout(location = 0) uniform int waveOutPosition;
 #if defined(EXPORT_EXECUTABLE)
   vec2 resolution = {SCREEN_XRESO, SCREEN_YRESO};
@@ -19,7 +20,8 @@ layout(location = 0) uniform int waveOutPosition;
   layout(std430, binding = 0) buffer _{ vec2 waveOutSamples[]; };
 #endif
 
-out vec4 outColor;
+layout(location = 0) out vec4 outColor0;
+layout(location = 1) out vec4 outColor1;
 
 // == constants ====================================================================================
 const float FAR = 44.0;
@@ -32,12 +34,15 @@ const float SQRT3_OVER_TWO = SQRT3 / 2.0;
 
 const float i_B2T = 0.43;
 const float i_SWING = 0.62;
-const int i_SAMPLES = 16;
-const float i_SAMPLES_F = 16.0;
+const int i_SAMPLES = 20;
+const float i_SAMPLES_F = 20.0;
+const int i_PLANES_TRAVERSAL = 16;
 const int i_REFLECTS = 3;
 
-const float i_GAP = 0.01;
-const float i_GREEBLES_HEIGHT = 0.02;
+const float i_GREEBLES_GAP = 0.01;
+const int i_GREEBLES_TRAVERSAL = 8;
+const float i_GREEBLES_HEIGHT = 0.03;
+const float i_PLANE_INTERVAL = 0.5;
 
 // == macros =======================================================================================
 #define saturate(x) clamp(x, 0.0, 1.0)
@@ -108,61 +113,14 @@ float sdcapsule2(vec2 p, vec2 tail) {
 }
 
 // == text =========================================================================================
-float sddomainsegment(vec2 p, vec2 a, vec2 b) {
-  a = 1.5 * a + vec2(-0.5, 1.5) * (step(2.0, a) + step(5.0, a)) - vec2(0.0, 6.0);
-  b = 1.5 * b + vec2(-0.5, 1.5) * (step(2.0, b) + step(5.0, b)) - vec2(0.0, 6.0);
-  return sdcapsule2(p - a, b - a);
-}
+float sddomainchar(inout vec2 p, int code, float margin) {
+  const ivec4 spaces[] = ivec4[](ivec4(3,5,8,8),ivec4(8,8,3,4),ivec4(4,8,8,3),ivec4(5,3,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,3,3,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(3,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,4,8),ivec4(4,8,8,2));
 
-float sddomainchar(vec2 p, int code) {
-  const ivec4 vertices[] = ivec4[](ivec4(0x016121110,0x016153635,0x005650161,0x016105650),ivec4(0x065561605,0x004135362,0x061501001,0x036300626),ivec4(0x024040642,0x062604042,0x066650100,0x063534241),ivec4(0x030100102,0x013334445,0x036160504,0x013334241),ivec4(0x050601615,0x036252130,0x006151100,0x036326503),ivec4(0x005633531,0x003631100,0x003431110,0x066650100),ivec4(0x010506165,0x056160501,0x010650116,0x026353010),ivec4(0x050051656,0x065645313,0x002006005,0x016566564),ivec4(0x053335362,0x061501001,0x006041363,0x066600666),ivec4(0x006045463,0x061501001,0x056160501,0x010506162),ivec4(0x053030666,0x065111056,0x016050413,0x053626150),ivec4(0x010010213,0x053646556,0x063130405,0x016566561),ivec4(0x050100114,0x013111014,0x013110065,0x003610464),ivec4(0x001610563,0x001051656,0x065645333,0x032313036),ivec4(0x033425263,0x065561605,0x001105000,0x003264663),ivec4(0x060026200,0x006566564,0x053035362,0x061500065),ivec4(0x056160501,0x010506106,0x000065665,0x061500006),ivec4(0x066036306,0x000600666,0x003530600,0x065561605),ivec4(0x001105061,0x063430600,0x003636660,0x016106661),ivec4(0x050100102,0x006006665,0x043034361,0x060060060),ivec4(0x000063332,0x033666000,0x006606610,0x050616556),ivec4(0x016050110,0x000065665,0x064530310,0x050616556),ivec4(0x016050110,0x042610006,0x056656453,0x003536260),ivec4(0x065561605,0x004135362,0x061501001,0x006663630),ivec4(0x006011050,0x061660603,0x020406366,0x006003334),ivec4(0x033606606,0x005616066,0x065010006,0x005336665),ivec4(0x033300666,0x065010060,0x036262030,0x006056160),ivec4(0x006161000,0x014365400,0x060000000,0));
-  const ivec4 segments[] = ivec4[](ivec4(0,2,4,6),ivec4(8,10,12,14),ivec4(16,28,30,35),ivec4(40,44,66,68),ivec4(72,76,78,80),ivec4(82,84,86,88),ivec4(90,92,96,105),ivec4(107,111,113,123),ivec4(130,136,140,142),ivec4(144,152,162,167),ivec4(184,195,197,199),ivec4(201,203,206,208),ivec4(210,213,221,223),ivec4(235,241,243,250),ivec4(255,263,265,271),ivec4(273,275,278,280),ivec4(282,284,294,296),ivec4(298,300,302,308),ivec4(310,314,317,320),ivec4(324,327,331,340),ivec4(347,356,358,365),ivec4(368,380,382,384),ivec4(390,396,400,403),ivec4(407,411,414,418),ivec4(424,428,432,436),ivec4(439,441,0,0));
-  const ivec4 chars[] = ivec4[](ivec4(0,2,4,8),ivec4(10,13,14,15),ivec4(16,17,20,22),ivec4(23,24,25,26),ivec4(28,30,31,33),ivec4(35,37,38,39),ivec4(40,41,43,45),ivec4(46,48,49,51),ivec4(52,54,56,57),ivec4(59,62,65,66),ivec4(69,70,71,74),ivec4(75,77,78,79),ivec4(80,82,84,85),ivec4(87,88,89,91),ivec4(93,95,96,97),ivec4(98,99,100,101));
+  vec2 uv = (saturate((p - vec2(4.0, 0.0)) / 16.0 + 0.5) + vec2(code % 8, code / 8)) / 8;
+  float d = texture(b1, uv).w;
 
-  float d = 100.0;
+  p.x -= float(spaces[code / 4][code % 4]) + margin;
 
-  if (abs(p.x - 5.0) > 5.0 && abs(p.y) > 7.0) {
-    return d;
-  }
-
-  int seg0 = chars[code / 4][code % 4];
-  code ++;
-  int seg1 = chars[code / 4][code % 4];
-
-  for (int i = seg0; i < seg1;) {
-    int vert0 = segments[i / 4][i % 4];
-    i ++;
-    int vert1 = segments[i / 4][i % 4] - 1;
-
-    for (int j = vert0; j < vert1;) {
-      int v0 = (vertices[j / 16][j / 4 % 4] >> (8 * (3 - j % 4))) & 255;
-      j ++;
-      int v1 = (vertices[j / 16][j / 4 % 4] >> (8 * (3 - j % 4))) & 255;
-
-      d = min(d, sddomainsegment(
-        p,
-        vec2(v0 >> 4, v0 & 15),
-        vec2(v1 >> 4, v1 & 15)
-      ));
-    }
-  }
-
-  return d;
-}
-
-float sddomainspace(int code) {
-  const ivec4 spaces[] = ivec4[](
-    ivec4(3,5,8,8),ivec4(8,8,3,4),ivec4(4,8,8,3),ivec4(5,3,8,8),
-    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,3,3,8),ivec4(8,8,8,8),
-    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(3,8,8,8),ivec4(8,8,8,8),
-    ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,4,8),ivec4(4,8,8,8)
-  );
-  return float(spaces[code / 4][code % 4]);
-}
-
-float sddomaincharspace(inout vec2 p, int code, float padding) {
-  float d = sddomainchar(p, code);
-  p.x -= sddomainspace(code) + padding;
   return d;
 }
 
@@ -201,7 +159,6 @@ void main() {
   float i_TENKAI_HELLO_RGB_DELAY = 32.0 + 0.5 * i_SWING;
   const float i_TENKAI_HELLO_HUGE_STUFF = 64.0;
   const float i_TENKAI_FLOOR_BEAT = 64.0;
-  const float i_TENKAI_HELLO_GRID = 96.0;
   const float i_TENKAI_HELLO_LARGE_PILLAR = 96.0;
   const float i_TENKAI_RGB_DELAY_4FLOOR = 96.0;
   const float i_TENKAI_BREAK = 192.0;
@@ -213,15 +170,17 @@ void main() {
   const float i_TENKAI_FADEOUT0 = i_TENKAI_OUTRO + 16.0;
   const float i_TENKAI_FADEOUT1 = i_TENKAI_FADEOUT0 + 16.0;
 
-  outColor *= 0.0;
+  outColor0 *= 0.0;
 
   vec2 uv = gl_FragCoord.xy / resolution.xy;
 
   float time = globalTime + 0.0 / i_B2T;
   vec3 seed = hash3f(vec3(uv, time));
-  time += 0.01 * seed.z;
+  time += 0.003 * seed.z;
   float beats = time / i_B2T;
-  float beatpulse = 0.2 + 0.8 * pow(0.5 - 0.5 * cos(TAU * ease(beats, 7.0)), 0.3);
+  float beatpulse = 0.4 + 0.6 * pow(0.5 - 0.5 * cos(TAU * ease(beats, 7.0)), 0.3) * (
+    1.0 - 0.8 * smoothstep(0.0, 1.0, beats - i_TENKAI_BREAK - 1.0) * smoothstep(0.0, -0.5, beats - i_TENKAI_FULLHOUSE)
+  );
   float beatpulse2 = exp(-5.0 * fract(beats));
 
   for (int i = 0; i ++ < i_SAMPLES;) {
@@ -230,14 +189,15 @@ void main() {
 
     vec3 colRem = vec3(0.4, 0.2, 1.0);
 
+    float i_clen = 10.0;
     mat3 cb = orthBas(colRem);
-    vec3 ro = 10.0 * cb[2];
+    vec3 ro = i_clen * cb[2];
     vec3 rd = cb * normalize(vec3(p, -10.0));
 
-    vec3 fp = ro + rd * 9.0;
+    vec3 fp = ro + rd * (i_clen - 1.0);
     ro += cb * vec3(0.01 * tan(2.0 * (seed = hash3f(seed)).xy - 1.0).xy, 0.0);
     rd = normalize(fp - ro);
-    ro += rd * mix(5.0, 6.0, seed.z);
+    ro += rd * i_clen * mix(0.5, 0.7, seed.z);
 
     float i_blur = exp(-0.2 * beats) + 0.04 * smoothstep(i_TENKAI_FADEOUT0, i_TENKAI_FADEOUT1, beats);
     ro += cb * vec3(i_blur * tan(2.0 * seed.xy - 1.0).xy, 0.0);
@@ -245,8 +205,6 @@ void main() {
     ro.z -= 0.4 * time;
 
     colRem *= (1.0 - 0.5 * length(p)) / colRem;
-
-    const float i_PLANE_INTERVAL = 0.25;
 
     for (int i = 0; i ++ < i_REFLECTS;) {
       vec3 emissive = vec3(0.0);
@@ -261,7 +219,7 @@ void main() {
       // floor greebles quadtree shit
       float grl = max(0.0, -(ro.y - i_GREEBLES_HEIGHT) / rd.y);
 
-      for (int i = 0; i ++ < 8;) {
+      for (int i = 0; i ++ < i_GREEBLES_TRAVERSAL;) {
         // if ray length is already further than isect, break
         if (isect.w < grl) {
           break;
@@ -287,7 +245,7 @@ void main() {
           dice = hash3f(cell);
         }
 
-        vec3 i_size = size - vec2(mix(1.0, 1.0 - beatpulse, step(i_TENKAI_FLOOR_BEAT, beats)) * (0.4 + 0.4 * sin(TAU * dice.z + time)) * i_GREEBLES_HEIGHT, i_GAP).yxy;
+        vec3 i_size = size - vec2(mix(1.0, 1.0 - beatpulse, step(i_TENKAI_FLOOR_BEAT, beats)) * (0.4 + 0.4 * sin(TAU * dice.z + time)) * i_GREEBLES_HEIGHT, i_GREEBLES_GAP).yxy;
         isect2 = isectBox(ro - cell, rd, i_size);
         if (isect2.w < isect.w) {
           isect = isect2;
@@ -306,7 +264,7 @@ void main() {
       float sidez = sign(rd.z);
       float planez = (floor(ro.z / i_PLANE_INTERVAL) + 0.5 * (1.0 + sidez)) * i_PLANE_INTERVAL;
 
-      for (int i = 0; i ++ < 32;) {
+      for (int i = 0; i ++ < i_PLANES_TRAVERSAL;) {
         isect2 = vec4(0.0, 0.0, -sidez, abs((ro.z - planez) / rd.z));
 
         // if the plane is already further than existing isect, break
@@ -321,7 +279,7 @@ void main() {
         vec3 dice = hash3f(id);
 
         float kind = floor(mod(planez / i_PLANE_INTERVAL, 8.0));
-        if (kind == 0) {
+        if (kind == 4) {
           // rainbow bar
           if (abs(rp.y - 0.02) < 0.01 * ease(saturate(beats - i_TENKAI_HELLO_RAINBOW_BAR), 5.0)) {
             mask = 1.0;
@@ -334,7 +292,7 @@ void main() {
             emissive += 10.0
               * exp(-40.0 * rp.y)
               * mix(1.0, sin(200.0 * rp.x), 0.2)
-              * mix(1.0, sin(40.0 * (rp.x + beats)), 0.2)
+              * mix(1.0, sin(60.0 * (rp.x + beats)), 0.2)
               * mask
               * i_col
               * beatpulse;
@@ -342,61 +300,46 @@ void main() {
 
           // warning
           rp.y -= 0.05;
-          float warningwidth = 0.025 * ease(saturate(beats - i_TENKAI_BREAK), 5.0) * smoothstep(0.0, -1.0, beats - i_TENKAI_FULLHOUSE);
-          if (abs(rp.y) < warningwidth && i_TENKAI_BREAK <= beats && beats < i_TENKAI_FULLHOUSE) {
-            const int codes[] = int[](0, 54, 32, 49, 45, 40, 45, 38);
-
+          float warningheight = 0.025 * ease(saturate(beats - i_TENKAI_BREAK), 5.0) * smoothstep(0.0, -1.0, beats - i_TENKAI_FULLHOUSE);
+          if (abs(rp.y) < warningheight && i_TENKAI_BREAK <= beats && beats < i_TENKAI_FULLHOUSE) {
             mask = 1.0;
 
-            rp.x = mod(rp.x + 0.1 * time, 0.5) - 0.25;
-            float blind = step(fract(20.0 * (rp.x + rp.y + 0.1 * time)), 0.5) * step(0.12, abs(rp.x)) * step(abs(rp.y), warningwidth - 0.008);
+            rp.x = mod(rp.x + 0.1 * time, 1.0) - 0.5;
+            float blind = step(fract(20.0 * (rp.x + rp.y + 0.1 * time)), 0.5) * step(0.3, abs(rp.x)) * step(abs(rp.y), warningheight - 0.008);
 
-            rp.xy *= 12.0 / warningwidth;
-            for (int i = 0; i ++ < 7;) {
-              float phase = saturate((beats - i_TENKAI_BREAK - 0.5 - 0.1 * float(i)) / 0.25);
-              if (0.0 < phase) {
-                int i_offset = int(16.0 * phase) - 16;
-                int code = (codes[i] - i_offset) % 64;
-                rp.x += 0.5 * sddomainspace(code) + 2.0;
-              }
-            }
-            rp.x -= 2.0;
-
-            float d = 100.0;
-            for (int i = 0; i ++ < 7;) {
-              float phase = saturate((beats - i_TENKAI_BREAK - 0.5 - 0.1 * float(i)) / 0.25);
-              if (0.0 < phase) {
-                int i_offset = int(16.0 * phase) - 16;
-                int code = (codes[i] - i_offset) % 64;
-                d = min(d, sddomaincharspace(rp.xy, code, 4.0) - 1.0);
-              }
-            }
             float shape = max(
-              step(d, 0.0),
+              step(texture(b0, saturate(rp.xy / 24.0 / warningheight + 0.5)).w, 1.0),
               blind
             );
 
             emissive += mix(
-              vec3(1.0, 0.04, 0.04),
-              vec3(1.0),
+              mix(
+                vec3(1.0, 0.04, 0.04),
+                vec3(1.0, 0.5, 0.04),
+                mod(floor(beats), 2.0)
+              ),
+              mix(
+                vec3(1.0),
+                vec3(0.0),
+                mod(floor(beats), 2.0)
+              ),
               shape
             );
 
           }
-        } else if (kind == 4) {
+        } else if (kind == 0) {
           // large pillar
           float i_ratio = ease(saturate(beats - i_TENKAI_HELLO_LARGE_PILLAR), 3.0);
-          mask = step(abs(abs(rp.x) - 0.5), 0.05 * i_ratio);
-          vec3 i_col = exp(-rp.y) * mix(
-            vec3(4.0, 6.0, 8.0),
-            vec3(9.0 * exp(-4.0 * rp.y), 0.5, 8.0),
-            ease(saturate(beats - i_TENKAI_TRANS), 3.0)
-          ) * mix(
-            beatpulse,
-            0.1,
-            smoothstep(0.0, 1.0, beats - i_TENKAI_BREAK - 1.0) * smoothstep(0.0, -0.5, beats - i_TENKAI_FULLHOUSE)
-          );
-          emissive += i_col * mask;
+          rp.x = abs(abs(rp.x) - 0.5) / 0.05 / i_ratio;
+          if (rp.x < 1.0) {
+            mask = 1.0;
+            vec3 i_col = exp(-rp.y) * mix(
+              vec3(4.0, 6.0, 8.0),
+              vec3(9.0 * exp(-4.0 * rp.y), 0.5, 8.0),
+              ease(saturate(beats - i_TENKAI_TRANS), 3.0)
+            ) * beatpulse * cos(0.9 * rp.x);
+            emissive += i_col;
+          }
         } else if (kind == 2) {
           // rave laser
           rp.y += 0.01;
@@ -415,7 +358,7 @@ void main() {
           if (i_TENKAI_HELLO_HUGE_STUFF <= beats && beats < i_TENKAI_BREAK || i_TENKAI_FULLHOUSE <= beats && beats < i_TENKAI_OUTRO) {
             // huge stuff
             dice = hash3f(dice + floor(beats));
-            rp.x += floor(17.0 * dice.y - 8.0) * 0.25;
+            rp.x += floor(9.0 * dice.y - 4.0) * 0.25;
 
             if (dice.x < 0.25) {
               // pillars
@@ -459,13 +402,13 @@ void main() {
 
             if (abs(cp.x) < 0.5 && abs(cp.y) < 0.5) {
               float off = (seed = hash3f(seed)).y;
-              vec3 col = 4.0 * 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * off - vec3(0.0, 0.25, 0.5))));
-
+              float beatsoff = beats - 0.2 * off + 0.1;
+              vec3 col = 4.0 * 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * off - vec3(0.0, 0.25, 0.5)))) * (1.0 + sin(400.0 * rp.y + 100.0 * beatsoff));
               float timegroup = floor(4.0 * dice.x);
 
-              if (beats < i_TENKAI_RGB_DELAY_4FLOOR) {
+              if (beatsoff < i_TENKAI_RGB_DELAY_4FLOOR) {
                 // b2sSwing
-                float st = 4.0 * beats;
+                float st = 4.0 * beatsoff;
                 st = 2.0 * floor(st / 2.0) + step(i_SWING, fract(0.5 * st));
 
                 st = clamp(st, 4.0 * i_TENKAI_HELLO_RGB_DELAY + 10.0, 4.0 * i_TENKAI_RGB_DELAY_4FLOOR - 16.0);
@@ -476,30 +419,32 @@ void main() {
                 st -= floor(st / 32.0);
 
                 float i_bst = 0.5 * (floor(st / 2.0) + i_SWING * mod(st, 2.0));
-                float t = beats - i_bst;
+                float t = beatsoff - i_bst;
 
-                col *= vec3(1.0, 0.04, 0.1) * step(0.0, t) * exp(-4.0 * t);
-              } else if (beats < i_TENKAI_BREAK) {
-                float b = beats;
+                col *= vec3(1.0, 0.04, 0.1) * step(0.0, t) * (exp(-4.0 * t) + exp(-40.0 * t));
+              } else if (beatsoff < i_TENKAI_BREAK) {
+                float b = beatsoff;
 
                 b = clamp(b, i_TENKAI_RGB_DELAY_4FLOOR + 3.0, i_TENKAI_FULLHOUSE);
                 b -= timegroup;
                 b = lofi(b, 4.0);
                 b += timegroup;
 
-                float t = beats - b;
+                float t = beatsoff - b;
 
-                col *= step(0.0, t) * exp(-2.0 * t) * smoothstep(0.0, -4.0, beats - i_TENKAI_BREAK);
+                col *= step(0.0, t) * (exp(-2.0 * t) + exp(-20.0 * t)) * (0.5 + 0.5 * cos(PI * 5.0 * saturate(2.0 * (beatsoff - i_TENKAI_BREAK + 0.5))));
               } else {
-                float thr = pow(fract(dice.x * 999.0), 0.5);
+                float thr = sqrt(fract(dice.x * 999.0));
 
-                col *= smoothstep(0.0, 4.0, beats - i_TENKAI_BREAK - 32.0 * thr) * mix(vec3(1.0), vec3(1.0, 0.05, 0.12), ease(saturate(beats - i_TENKAI_TRANS), 3.0));
+                col *= smoothstep(0.0, 4.0, beatsoff - i_TENKAI_BREAK - 32.0 * thr) * mix(vec3(1.0), vec3(1.0, 0.05, 0.12), ease(saturate(beats - i_TENKAI_TRANS), 3.0));
               }
+
+              col = max(col, 0.0);
 
               float phase = (
                 1.0
-                + max(beats - 0.3 * off - timegroup + 0.3 - i_TENKAI_BREAK, 0.0) / 4.0
-                + max(beats - 0.3 * off - timegroup + 0.3 - i_TENKAI_FULLHOUSE, 0.0) / 4.0
+                + max(beatsoff - timegroup - i_TENKAI_BREAK, 0.0) / 4.0
+                + max(beatsoff - timegroup - i_TENKAI_FULLHOUSE, 0.0) / 4.0
               );
 
               float ephase = ease(phase, 6.0);
@@ -529,8 +474,8 @@ void main() {
               } else if (dice.z < 4) {
                 // dot matrix
                 float shape = step(abs(cp.y), 0.5) * step(abs(cp.x), 0.5);
-                cp *= 6.0;
-                shape *= step(length(fract(cp) - 0.5), 0.3);
+                cp *= 4.0;
+                shape *= step(length(fract(cp) - 0.5), 0.4);
                 cp = floor(cp);
                 float i_rand = floor(12.0 * min(fract(phase), 0.5));
                 emissive += col * shape * step(
@@ -557,19 +502,22 @@ void main() {
                 ) * step(mod(cell, 3.0), 1.0 - 1.1 * cos(PI * ephase));
                 emissive += col * i_shape;
               } else if (dice.z < 7) {
-                // blink rect
-                cp = floor(5.0 * cp + 0.5);
+                // 0b5vr (hide in the first half)
+                cp = floor(8.0 * cp + 0.5);
+                float i_lcp = length(cp);
                 float i_rand = floor(16.0 * phase);
+                float i_obsvr = step(i_lcp, 0.5) + step(1.5, i_lcp) * step(i_lcp, 2.5);
                 float i_shape = step(
                   hash3f(vec3(cp, dice.y + i_rand)).x,
-                  0.5 - 0.5 * cos(PI * ephase)
-                );
+                  0.5 + 0.5 * cos(PI * ephase)
+                ) * i_obsvr;
                 emissive += col * i_shape;
               } else if (dice.z < 8) {
                 // char
                 float i_rand = floor(30.0 * min(fract(phase), 0.2)) + floor(phase);
                 int i_char = int(64.0 * hash3f(dice + i_rand).x);
-                float i_d = sddomainchar(14.0 * cp + vec2(4.0, 0.0), i_char);
+                cp = 12.0 * cp + vec2(4.0, 0.0);
+                float i_d = sddomainchar(cp, i_char, 0.0);
                 emissive += col * step(i_d, 0.5);
               } else if (dice.z < 12) {
                 // arrow
@@ -667,7 +615,7 @@ void main() {
       }
 
       // emissive
-      outColor.xyz += colRem * emissive;
+      outColor0.xyz += colRem * emissive;
 
       // if mask is set, break
       if (mask > 0.0) {
@@ -677,7 +625,7 @@ void main() {
       // the ray missed all of the above, you suck
       if (isect.w >= FAR) {
         float i_intro = 0.5 * smoothstep(0.0, 32.0, beats) * (0.01 + smoothstep(32.0, 31.5, beats));
-        outColor.xyz += colRem * i_intro;
+        outColor0.xyz += colRem * i_intro;
         break;
       }
 
@@ -736,6 +684,7 @@ void main() {
       }
     }
 
+    // title
     if (beats < i_TENKAI_HELLO_RGB_DELAY) {
       float phase = (float(i - 1) + seed.x) / i_SAMPLES_F;
       float diffuse = phase * phase * phase * phase;
@@ -743,47 +692,121 @@ void main() {
 
       float d = 100.0;
 
-      // planefiller
-      p = p * 120.0;
-      p.x += 1.5 + 0.5 * sddomainspace(47);
-      p.x += 1.5 + 0.5 * sddomainspace(43);
-      p.x += 1.5 + 0.5 * sddomainspace(32);
-      p.x += 1.5 + 0.5 * sddomainspace(45);
-      p.x += 1.5 + 0.5 * sddomainspace(36);
-      p.x += 1.5 + 0.5 * sddomainspace(37);
-      p.x += 1.5 + 0.5 * sddomainspace(40);
-      p.x += 1.5 + 0.5 * sddomainspace(43);
-      p.x += 1.5 + 0.5 * sddomainspace(43);
-      p.x += 1.5 + 0.5 * sddomainspace(36);
-      p.x += 1.5 + 0.5 * sddomainspace(49);
-      p.x -= 2.0;
-
-      d = min(d, sddomaincharspace(p.xy, 47, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 32, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 45, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 36, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 37, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 40, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 43, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 36, 3.0));
-      d = min(d, sddomaincharspace(p.xy, 49, 3.0));
+      d = texture(b0, saturate(0.7 * p + 0.5)).w;
 
       // render
       float shape = smoothstep(2.0 * diffuse, 0.0, d - 0.2);
       vec3 i_col = 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * phase - vec3(0.0, 0.25, 0.5))));
-      outColor.xyz += shape * i_col * smoothstep(-1.0, -4.0, beats - i_TENKAI_HELLO_RGB_DELAY);
+      outColor0.xyz += shape * i_col * smoothstep(-1.0, -4.0, beats - i_TENKAI_HELLO_RGB_DELAY);
     }
   }
 
-  outColor.xyz = mix(
+  outColor0.xyz = mix(
     smoothstep(
       vec3(-0.0, -0.1, -0.2),
       vec3(1.0, 1.1, 1.2),
-      sqrt(outColor.xyz / i_SAMPLES_F)
+      sqrt(outColor0.xyz / i_SAMPLES_F)
     ),
-    max(texture(backBuffer0, uv), 0.0).xyz,
+    max(texture(b0, uv), 0.0).xyz,
     0.5
   ) * smoothstep(0.0, 4.0, beats) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
+
+  // -- buffer 0 alpha - texts ---------------------------------------------------------------------
+  // title, "planefiller"
+  if (beats < i_TENKAI_HELLO_RGB_DELAY) {
+    float d = 100.0;
+
+    vec2 p = (uv - 0.5) * 160.0 + vec2(56.0, 0.0);
+
+    float i_margin = 3.0;
+    d = min(d, sddomainchar(p, 47, i_margin));
+    d = min(d, sddomainchar(p, 43, i_margin));
+    d = min(d, sddomainchar(p, 32, i_margin));
+    d = min(d, sddomainchar(p, 45, i_margin));
+    d = min(d, sddomainchar(p, 36, i_margin));
+    d = min(d, sddomainchar(p, 37, i_margin));
+    d = min(d, sddomainchar(p, 40, i_margin));
+    d = min(d, sddomainchar(p, 43, i_margin));
+    d = min(d, sddomainchar(p, 43, i_margin));
+    d = min(d, sddomainchar(p, 36, i_margin));
+    d = min(d, sddomainchar(p, 49, i_margin));
+
+    // render
+    outColor0.w = d;
+  }
+
+  // "warning"
+  if (i_TENKAI_BREAK <= beats && beats < i_TENKAI_FULLHOUSE - 4.0) {
+    const int codes[] = int[](
+      0,
+      54, 32, 49, 45, 40, 45, 38, // warning
+      63, 12, 63, // -
+      35, 49, 46, 47, 63, // drop
+      40, 45, 34, 46, 44, 40, 45, 38
+    );
+
+    float d = 100.0;
+
+    vec2 p = (uv - 0.5) * 280.0 + vec2(118.0, 0.0);
+
+    for (int i = 0; i ++ < 23;) {
+      float phase = saturate((beats - i_TENKAI_BREAK - 0.5 - 0.05 * float(i)) / 0.25);
+      if (0.0 < phase) {
+        int i_offset = 3 * (int(16.0 * phase) - 16);
+        int code = (codes[i] - i_offset) % 64;
+        d = min(d, sddomainchar(p, code, 4.0));
+      }
+    }
+
+    // render
+    outColor0.w = d;
+  }
+
+  // countdown
+  if (i_TENKAI_FULLHOUSE - 4.0 <= beats && beats < i_TENKAI_FULLHOUSE) {
+    vec2 p = (uv - 0.5) * 280.0 + vec2(4.0, 0.0);
+
+    float d = sddomainchar(p, 18 - int(beats) % 4, 4.0);
+
+    // render
+    outColor0.w = d;
+  }
+
+  // -- buffer 1 alpha - chars ---------------------------------------------------------------------
+  {
+    const ivec4 vertices[] = ivec4[](ivec4(0x10111216,0x35361516,0x61016505,0x50561016),ivec4(0x05165665,0x62531304,0x01105061,0x26063036),ivec4(0x42060424,0x42406062,0x00016566,0x41425363),ivec4(0x02011030,0x45443313,0x04051636,0x41423313),ivec4(0x15166050,0x30212536,0x00111506,0x03653236),ivec4(0x31356305,0x00116303,0x10114303,0x00016566),ivec4(0x65615010,0x01051656,0x16016510,0x10303526),ivec4(0x56160550,0x13536465,0x05600002,0x64655616),ivec4(0x62533353,0x01105061,0x63130406,0x66066066),ivec4(0x63540406,0x01105061,0x01051656,0x62615010),ivec4(0x66060353,0x56101165,0x13040516,0x50616253),ivec4(0x13020110,0x56656453,0x05041363,0x61655616),ivec4(0x14011050,0x14101113,0x65001113,0x64046103),ivec4(0x63056101,0x56160501,0x33536465,0x36303132),ivec4(0x63524233,0x05165665,0x00501001,0x63462603),ivec4(0x00620260,0x64655606,0x62530353,0x65005061),ivec4(0x01051656,0x06615010,0x65560600,0x06005061),ivec4(0x06630366,0x66066000,0x00065303,0x05165665),ivec4(0x61501001,0x00064363,0x60666303,0x61661016),ivec4(0x02011050,0x65660006,0x61430343,0x60000660),ivec4(0x32330600,0x00606633,0x10666006,0x56656150),ivec4(0x10010516,0x65560600,0x10035364,0x56656150),ivec4(0x10010516,0x06006142,0x53646556,0x60625303),ivec4(0x05165665,0x62531304,0x01105061,0x30366606),ivec4(0x50100106,0x03066661,0x66634020,0x34330006),ivec4(0x06666033,0x66606105,0x06000165,0x65663305),ivec4(0x66063033,0x60000165,0x30202636,0x60610506),ivec4(0x00101606,0x00543614,0x00000060,0));
+    const ivec4 segments[] = ivec4[](ivec4(0,2,4,6),ivec4(8,10,12,14),ivec4(16,28,30,35),ivec4(40,44,66,68),ivec4(72,76,78,80),ivec4(82,84,86,88),ivec4(90,92,96,105),ivec4(107,111,113,123),ivec4(130,136,140,142),ivec4(144,152,162,167),ivec4(184,195,197,199),ivec4(201,203,206,208),ivec4(210,213,221,223),ivec4(235,241,243,250),ivec4(255,263,265,271),ivec4(273,275,278,280),ivec4(282,284,294,296),ivec4(298,300,302,308),ivec4(310,314,317,320),ivec4(324,327,331,340),ivec4(347,356,358,365),ivec4(368,380,382,384),ivec4(390,396,400,403),ivec4(407,411,414,418),ivec4(424,428,432,436),ivec4(439,441,0,0));
+    const ivec4 chars[] = ivec4[](ivec4(0,2,4,8),ivec4(10,13,14,15),ivec4(16,17,20,22),ivec4(23,24,25,26),ivec4(28,30,31,33),ivec4(35,37,38,39),ivec4(40,41,43,45),ivec4(46,48,49,51),ivec4(52,54,56,57),ivec4(59,62,65,66),ivec4(69,70,71,74),ivec4(75,77,78,79),ivec4(80,82,84,85),ivec4(87,88,89,91),ivec4(93,95,96,97),ivec4(98,99,100,101));
+
+    const ivec4 spaces[] = ivec4[](ivec4(3,5,8,8),ivec4(8,8,3,4),ivec4(4,8,8,3),ivec4(5,3,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,3,3,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(3,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,4,8),ivec4(4,8,8,8));
+
+    int code = int(dot(floor(8 * uv), vec2(1, 8)));
+    vec2 p = (fract(8 * uv) - 0.5) * 16.0;
+
+    float d = 100.0;
+
+    int seg0 = chars[code / 4][code % 4];
+    code ++;
+    int seg1 = chars[code / 4][code % 4];
+
+    for (int i = seg0; i < seg1;) {
+      int vert0 = segments[i / 4][i % 4];
+      i ++;
+      int vert1 = segments[i / 4][i % 4] - 1;
+
+      for (int j = vert0; j < vert1;) {
+        int i_iv0 = (vertices[j / 16][j / 4 % 4] >> ((j % 4) * 8));
+        vec2 v0 = vec2((i_iv0 / ivec2(16, 1)) & 15);
+        j ++;
+        int i_iv1 = (vertices[j / 16][j / 4 % 4] >> ((j % 4) * 8));
+        vec2 v1 = vec2((i_iv1 / ivec2(16, 1)) & 15);
+
+        v0 = 1.5 * v0 + vec2(-0.5, 0.5) * (step(2.0, v0) + step(5.0, v0)) - vec2(4.0, 5.0);
+        v1 = 1.5 * v1 + vec2(-0.5, 0.5) * (step(2.0, v1) + step(5.0, v1)) - vec2(4.0, 5.0);
+        d = min(d, sdcapsule2(p - v0, v1 - v0));
+      }
+    }
+
+    outColor1.w = d;
+  }
 }
