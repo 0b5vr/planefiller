@@ -3,5 +3,6 @@
 !*.json
 !*.gfx.glsl
 !*.snd.glsl
+!*.nfo
 !LICENSE
 !README.md
