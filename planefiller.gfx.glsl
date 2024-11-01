@@ -308,7 +308,7 @@ void main() {
             float blind = step(fract(20.0 * (rp.x + rp.y + 0.1 * time)), 0.5) * step(0.3, abs(rp.x)) * step(abs(rp.y), warningheight - 0.008);
 
             float shape = max(
-              step(texture(b0, saturate(rp.xy / 24.0 / warningheight + 0.5)).w, 1.0),
+              step(texture(b0, saturate(rp.xy / 24.0 / warningheight + 0.5)).w * 10.0, 1.0),
               blind
             );
 
@@ -517,7 +517,7 @@ void main() {
                 float i_rand = floor(30.0 * min(fract(phase), 0.2)) + floor(phase);
                 int i_char = int(64.0 * hash3f(dice + i_rand).x);
                 cp = 12.0 * cp + vec2(4.0, 0.0);
-                float i_d = sddomainchar(cp, i_char, 0.0);
+                float i_d = sddomainchar(cp, i_char, 0.0) * 10.0;
                 emissive += col * step(i_d, 0.5);
               } else if (dice.z < 12) {
                 // arrow
@@ -695,7 +695,7 @@ void main() {
       d = texture(b0, saturate(0.7 * p + 0.5)).w;
 
       // render
-      float shape = smoothstep(2.0 * diffuse, 0.0, d - 0.2);
+      float shape = smoothstep(2.0 * diffuse, 0.0, d * 10.0 - 0.2);
       vec3 i_col = 3.0 * (0.5 - 0.5 * cos(TAU * saturate(1.5 * phase - vec3(0.0, 0.25, 0.5))));
       outColor0.xyz += shape * i_col * smoothstep(-1.0, -4.0, beats - i_TENKAI_HELLO_RGB_DELAY);
     }
@@ -807,6 +807,6 @@ void main() {
       }
     }
 
-    outColor1.w = d;
+    outColor1.w = d * 0.1;
   }
 }
