@@ -205,7 +205,7 @@ void main() {
     float vel = fract(seq.x * 0.38);
     float env = exp2(-exp2(6.0 - 1.0 * vel - float(mod(seq.x, 4.0) == 2.0)) * t);
     vec2 wave = shotgun(6000.0 * t, 2.0);
-    dest += 0.13 * env * mix(0.2, 1.0, sidechain) * tanh(8.0 * wave);
+    dest += 0.16 * env * mix(0.2, 1.0, sidechain) * tanh(8.0 * wave);
   }
 
   if (i_TENKAI_HELLO_OH <= beats && beats < i_TENKAI_OUTRO) { // open hihat
@@ -277,7 +277,7 @@ void main() {
       sum += wave;
     }
 
-    dest += 0.04 * env * mix(0.3, 1.0, sidechain) * tanh(sum);
+    dest += 0.05 * env * mix(0.3, 1.0, sidechain) * tanh(sum);
   }
 
   if (i_TENAKI_HELLO_CLAP <= beats && beats < i_TENKAI_OUTRO) { // clap
@@ -293,7 +293,7 @@ void main() {
 
     vec2 wave = cyclic(vec3(4.0 * cis(800.0 * t), 840.0 * t), 0.5, 2.0).xy;
 
-    dest += 0.12 * tanh(20.0 * env * wave);
+    dest += 0.15 * tanh(20.0 * env * wave);
   }
 
   if (i_volumeSnare > 0.0) { // snare909
@@ -396,5 +396,5 @@ void main() {
     }
   }
 
-  waveOutSamples[frame] = clamp(tanh(dest), -1.0, 1.0) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
+  waveOutSamples[frame] = clamp(1.3 * tanh(dest), -1.0, 1.0) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
 }
