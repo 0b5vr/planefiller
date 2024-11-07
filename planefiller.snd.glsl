@@ -130,19 +130,19 @@ void main() {
   float beatsbar = lofi(beats, 4.0);
   float beats8bar = lofi(beats, 32.0);
 
-  const bool i_condKickHipass = (
+  bool i_condKickHipass = (
     ((i_TENKAI_HELLO_BASS - 3.0) <= beats && beats < i_TENKAI_HELLO_BASS) ||
     (i_TENKAI_BREAK <= beats && beats < i_TENKAI_FULLHOUSE - 4.0)
   );
 
-  const int i_patternKick =
+  int i_patternKick =
     beatsbar == (i_TENKAI_HELLO_OH - 4.0) ? 0x88a6 :
     beatsbar == (i_TENKAI_FULLHOUSE - 4.0) ? 0x808f :
     beatsbar == (i_TENKAI_TRANS - 4.0) ? 0x809e :
     beatsbar == (i_TENKAI_OUTRO - 4.0) ? 0xa18e :
     0x8888;
 
-  const float i_timeCrash = float(frame - SAMPLES_PER_BEAT * int(
+  float i_timeCrash = float(frame - SAMPLES_PER_BEAT * int(
     i_TENKAI_OUTRO <= beats ? i_TENKAI_OUTRO :
     i_TENKAI_OUTRO - 4.0 <= beats ? i_TENKAI_OUTRO - 4.0 :
     i_TENKAI_TRANS <= beats ? i_TENKAI_TRANS :
@@ -155,7 +155,7 @@ void main() {
     -111.0
   )) / SAMPLES_PER_SEC;
 
-  const float i_volumeSnare = (
+  float i_volumeSnare = (
     beats8bar == i_TENKAI_BREAK ? smoothstep(0.0, 32.0 * B2T, time.z) :
     beatsbar == (i_TENKAI_FULLHOUSE - 4.0) ? smoothstep(-4.0 * B2T, 4.0 * B2T, time.y) :
     beatsbar == (i_TENKAI_TRANS - 4.0) ? smoothstep(-4.0 * B2T, 4.0 * B2T, time.y) :
@@ -163,7 +163,7 @@ void main() {
     0.0
   );
 
-  const bool i_rollSnare = (
+  bool i_rollSnare = (
     beats8bar == i_TENKAI_BREAK ? 28.0 * B2T < time.z :
     2.0 * B2T < time.y
   );
@@ -196,7 +196,7 @@ void main() {
   }
 
   if (i_TENKAI_HELLO_HIHAT <= beats && beats < i_TENKAI_OUTRO) { // hihat
-    const int i_patternCH =
+    int i_patternCH =
       i_TENKAI_HELLO_HIHAT_16TH <= beats ? 0xffff :
       0xeaaa;
     vec4 seq = seq16(time.y, i_patternCH);
