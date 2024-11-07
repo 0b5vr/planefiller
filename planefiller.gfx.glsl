@@ -353,7 +353,7 @@ void main() {
             vec3(10.0, 0.1, 0.1),
             ease(saturate(beats - i_TENKAI_TRANS), 3.0)
           );
-          emissive += step(i_TENKAI_HELLO_LASER, beats) * smoothstep(2.0, 0.0, abs(rp.x)) * exp(-4.0 * rp.y) * beatpulse2 * step(d, 0.001) * i_col;
+          emissive += step(i_TENKAI_HELLO_LASER, beats) * smoothstep(2.0, 0.0, abs(rp.x)) * exp(-4.0 * abs(rp.y)) * beatpulse2 * step(d, 0.001) * i_col;
         } else if (kind == 6) {
           if (i_TENKAI_HELLO_HUGE_STUFF <= beats && beats < i_TENKAI_BREAK || i_TENKAI_FULLHOUSE <= beats && beats < i_TENKAI_OUTRO) {
             // huge stuff
