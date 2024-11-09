@@ -116,8 +116,12 @@ float sdcapsule2(vec2 p, vec2 tail) {
 float sddomainchar(inout vec2 p, int code, float margin) {
   const ivec4 spaces[] = ivec4[](ivec4(3,5,8,8),ivec4(8,8,3,4),ivec4(4,8,8,3),ivec4(5,3,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,3,3,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(3,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,8,8),ivec4(8,8,4,8),ivec4(4,8,8,2));
 
-  vec2 uv = (saturate((p - vec2(4.0, 0.0)) / 16.0 + 0.5) + vec2(code % 8, code / 8)) / 8;
-  float d = texture(b1, uv).w;
+  vec2 uv = saturate((p - vec2(4.0, 0.0)) / 16.0 + 0.5);
+  float d = 100.0;
+  if (abs(uv.x - 0.5) < 0.5 && abs(uv.y - 0.5) < 0.5) {
+    uv = (uv + vec2(code % 8, code / 8)) / 8.0;
+    d = texture(b1, uv).x;
+  }
 
   p.x -= float(spaces[code / 4][code % 4]) + margin;
 
@@ -308,7 +312,7 @@ void main() {
             float blind = step(fract(20.0 * (rp.x + rp.y + 0.1 * time)), 0.5) * step(0.3, abs(rp.x)) * step(abs(rp.y), warningheight - 0.008);
 
             float shape = max(
-              step(texture(b0, saturate(rp.xy / 24.0 / warningheight + 0.5)).w, 1.0),
+              step(texture(b1, saturate(rp.xy / 24.0 / warningheight + 0.5)).y, 1.0),
               blind
             );
 
@@ -692,7 +696,7 @@ void main() {
 
       float d = 100.0;
 
-      d = texture(b0, saturate(0.7 * p + 0.5)).w;
+      d = texture(b1, saturate(0.7 * p + 0.5)).y;
 
       // render
       float shape = smoothstep(2.0 * diffuse, 0.0, d - 0.2);
@@ -711,7 +715,7 @@ void main() {
     0.5
   ) * smoothstep(0.0, 4.0, beats) * smoothstep(i_TENKAI_FADEOUT1, i_TENKAI_FADEOUT0, beats);
 
-  // -- buffer 0 alpha - texts ---------------------------------------------------------------------
+  // -- buffer 1 green - texts ---------------------------------------------------------------------
   // title, "planefiller"
   if (beats < i_TENKAI_HELLO_RGB_DELAY) {
     float d = 100.0;
@@ -732,7 +736,7 @@ void main() {
     d = min(d, sddomainchar(p, 49, i_margin));
 
     // render
-    outColor0.w = d;
+    outColor1.y = d;
   }
 
   // "warning"
@@ -759,7 +763,7 @@ void main() {
     }
 
     // render
-    outColor0.w = d;
+    outColor1.y = d;
   }
 
   // countdown
@@ -769,11 +773,12 @@ void main() {
     float d = sddomainchar(p, 18 - int(beats) % 4, 4.0);
 
     // render
-    outColor0.w = d;
+    outColor1.y = d;
   }
 
-  // -- buffer 1 alpha - chars ---------------------------------------------------------------------
-  {
+  // -- buffer 1 red - chars -----------------------------------------------------------------------
+  outColor1.x = texture(b1, uv).x;
+  if (outColor1.x == 0.0) {
     const ivec4 vertices[] = ivec4[](ivec4(0x10111216,0x35361516,0x61016505,0x50561016),ivec4(0x05165665,0x62531304,0x01105061,0x26063036),ivec4(0x42060424,0x42406062,0x00016566,0x41425363),ivec4(0x02011030,0x45443313,0x04051636,0x41423313),ivec4(0x15166050,0x30212536,0x00111506,0x03653236),ivec4(0x31356305,0x00116303,0x10114303,0x00016566),ivec4(0x65615010,0x01051656,0x16016510,0x10303526),ivec4(0x56160550,0x13536465,0x05600002,0x64655616),ivec4(0x62533353,0x01105061,0x63130406,0x66066066),ivec4(0x63540406,0x01105061,0x01051656,0x62615010),ivec4(0x66060353,0x56101165,0x13040516,0x50616253),ivec4(0x13020110,0x56656453,0x05041363,0x61655616),ivec4(0x14011050,0x14101113,0x65001113,0x64046103),ivec4(0x63056101,0x56160501,0x33536465,0x36303132),ivec4(0x63524233,0x05165665,0x00501001,0x63462603),ivec4(0x00620260,0x64655606,0x62530353,0x65005061),ivec4(0x01051656,0x06615010,0x65560600,0x06005061),ivec4(0x06630366,0x66066000,0x00065303,0x05165665),ivec4(0x61501001,0x00064363,0x60666303,0x61661016),ivec4(0x02011050,0x65660006,0x61430343,0x60000660),ivec4(0x32330600,0x00606633,0x10666006,0x56656150),ivec4(0x10010516,0x65560600,0x10035364,0x56656150),ivec4(0x10010516,0x06006142,0x53646556,0x60625303),ivec4(0x05165665,0x62531304,0x01105061,0x30366606),ivec4(0x50100106,0x03066661,0x66634020,0x34330006),ivec4(0x06666033,0x66606105,0x06000165,0x65663305),ivec4(0x66063033,0x60000165,0x30202636,0x60610506),ivec4(0x00101606,0x00543614,0x00000060,0));
     const ivec4 segments[] = ivec4[](ivec4(0,2,4,6),ivec4(8,10,12,14),ivec4(16,28,30,35),ivec4(40,44,66,68),ivec4(72,76,78,80),ivec4(82,84,86,88),ivec4(90,92,96,105),ivec4(107,111,113,123),ivec4(130,136,140,142),ivec4(144,152,162,167),ivec4(184,195,197,199),ivec4(201,203,206,208),ivec4(210,213,221,223),ivec4(235,241,243,250),ivec4(255,263,265,271),ivec4(273,275,278,280),ivec4(282,284,294,296),ivec4(298,300,302,308),ivec4(310,314,317,320),ivec4(324,327,331,340),ivec4(347,356,358,365),ivec4(368,380,382,384),ivec4(390,396,400,403),ivec4(407,411,414,418),ivec4(424,428,432,436),ivec4(439,441,0,0));
     const ivec4 chars[] = ivec4[](ivec4(0,2,4,8),ivec4(10,13,14,15),ivec4(16,17,20,22),ivec4(23,24,25,26),ivec4(28,30,31,33),ivec4(35,37,38,39),ivec4(40,41,43,45),ivec4(46,48,49,51),ivec4(52,54,56,57),ivec4(59,62,65,66),ivec4(69,70,71,74),ivec4(75,77,78,79),ivec4(80,82,84,85),ivec4(87,88,89,91),ivec4(93,95,96,97),ivec4(98,99,100,101));
@@ -789,12 +794,14 @@ void main() {
     code ++;
     int seg1 = chars[code / 4][code % 4];
 
-    for (int i = seg0; i < seg1;) {
-      int vert0 = segments[i / 4][i % 4];
-      i ++;
-      int vert1 = segments[i / 4][i % 4] - 1;
+    for (int i = seg0; i ++ < seg1;) {
+      int j = i - 1;
+      int vert0 = segments[j / 4][j % 4];
+      j ++;
+      int vert1 = segments[j / 4][j % 4] - 1;
 
-      for (int j = vert0; j < vert1;) {
+      for (int i = vert0; i ++ < vert1;) {
+        int j = i - 1;
         int i_iv0 = (vertices[j / 16][j / 4 % 4] >> ((j % 4) * 8));
         vec2 v0 = vec2((i_iv0 / ivec2(16, 1)) & 15);
         j ++;
@@ -807,6 +814,6 @@ void main() {
       }
     }
 
-    outColor1.w = d;
+    outColor1.x = d;
   }
 }
